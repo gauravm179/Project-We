@@ -1,0 +1,37 @@
+Metadata-Version: 2.4
+Name: project-we-backend
+Version: 0.1.0
+Summary: Project We backend foundation
+Requires-Python: >=3.11
+Description-Content-Type: text/markdown
+Requires-Dist: fastapi>=0.115.0
+Requires-Dist: uvicorn>=0.30.0
+Requires-Dist: sqlalchemy>=2.0.30
+Requires-Dist: pydantic>=2.8.0
+Requires-Dist: httpx>=0.27.0
+Provides-Extra: dev
+Requires-Dist: pytest>=8.2.0; extra == "dev"
+Requires-Dist: ruff>=0.5.0; extra == "dev"
+
+# Project We Backend
+
+## Run locally
+
+```bash
+python -m venv .venv
+source .venv/bin/activate  # Windows: .venv\Scripts\Activate.ps1
+pip install -e ".[dev]"
+uvicorn app.main:app --reload
+```
+
+## Test
+
+```bash
+pytest
+```
+
+## Lint
+
+```bash
+ruff check .
+```
