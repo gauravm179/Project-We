@@ -1,16 +1,29 @@
 from __future__ import annotations
 
+import asyncio
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.api.routes import chat, control, health, inputs, memory, permissions, safety
+from app.api.routes import (
+    chat,
+    control,
+    health,
+    inputs,
+    memory,
+    permissions,
+    runtime,
+    safety,
+    skills,
+    specialists,
+)
 from app.core.config import DATA_DIR
 from app.core.logging import configure_logging
 from app.db.base import Base
 from app.db.session import get_engine, get_session_factory
+from app.runtime.service import heartbeat_loop, reset_start_time
 from app.safety.service import SafetyService
 
 
@@ -19,12 +32,17 @@ async def lifespan(_: FastAPI):
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     configure_logging()
     Base.metadata.create_all(bind=get_engine())
+    reset_start_time()
+    heartbeat_task = asyncio.create_task(
+        heartbeat_loop(get_session_factory(), interval_seconds=60.0)
+    )
     yield
+    heartbeat_task.cancel()
 
 
 app = FastAPI(
     title="Project We",
-    version="0.2.0",
+    version="0.3.0",
     lifespan=lifespan,
 )
 
@@ -37,7 +55,6 @@ app.add_middleware(
 )
 
 _safety_service = SafetyService()
-_session_factory = get_session_factory()
 
 
 @app.middleware("http")
@@ -45,7 +62,7 @@ async def emergency_stop_guard(request: Request, call_next):
     if request.url.path.startswith("/safety"):
         return await call_next(request)
 
-    db = _session_factory()
+    db = get_session_factory()()
     try:
         if _safety_service.is_emergency_stop_active(db):
             return JSONResponse(
@@ -69,3 +86,6 @@ app.include_router(inputs.router)
 app.include_router(permissions.router)
 app.include_router(control.router)
 app.include_router(safety.router)
+app.include_router(specialists.router)
+app.include_router(skills.router)
+app.include_router(runtime.router)
