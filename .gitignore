@@ -1,0 +1,18 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+
+.vscode/
+.idea/
+
+.DS_Store
+Thumbs.db
+
+# Local project data
+data/logs/
+data/models/
+data/project_we.db
+*.db
