@@ -10,13 +10,25 @@ class OllamaProvider(AIProvider):
         self._base_url = base_url.rstrip("/")
         self._model = model
 
-    async def generate(self, user_message: str) -> str:
+    async def generate(self, user_message: str, memory_context: str | None = None) -> str:
+        messages = []
+        if memory_context:
+            messages.append(
+                {
+                    "role": "system",
+                    "content": (
+                        "Use this local memory context when useful. "
+                        "Do not claim internet access without explicit permission.\n"
+                        f"{memory_context}"
+                    ),
+                }
+            )
+        messages.append({"role": "user", "content": user_message})
+
         payload = {
             "model": self._model,
             "stream": False,
-            "messages": [
-                {"role": "user", "content": user_message},
-            ],
+            "messages": messages,
         }
         url = f"{self._base_url}/api/chat"
         timeout = httpx.Timeout(30.0, connect=5.0)

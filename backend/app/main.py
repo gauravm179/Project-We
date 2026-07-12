@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import chat, health, memory
+from app.api.routes import chat, health, inputs, memory, permissions
 from app.core.config import DATA_DIR
 from app.core.logging import configure_logging
 from app.db.base import Base
@@ -22,7 +22,7 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(
     title="Project We",
-    version="0.1.0",
+    version="0.2.0",
     lifespan=lifespan,
 )
 
@@ -37,3 +37,5 @@ app.add_middleware(
 app.include_router(health.router)
 app.include_router(chat.router)
 app.include_router(memory.router)
+app.include_router(inputs.router)
+app.include_router(permissions.router)

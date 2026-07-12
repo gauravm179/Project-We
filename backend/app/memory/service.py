@@ -65,3 +65,12 @@ class MemoryService:
         )
         rows = db.execute(stmt).all()
         return [MemorySummary(memory_type=row[0], count=row[1]) for row in rows]
+
+    def recent_context(self, db: Session, limit: int = 8) -> str:
+        stmt = select(MemoryItem).order_by(MemoryItem.id.desc()).limit(limit)
+        rows = db.scalars(stmt).all()
+        if not rows:
+            return ""
+        rows.reverse()
+        parts = [f"{row.memory_type}:{row.key}={row.value}" for row in rows]
+        return "\n".join(parts)
