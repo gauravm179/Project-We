@@ -5,3 +5,4 @@ def test_root(client):
     assert body["name"] == "Project We"
     assert body["version"] == "0.2.0"
     assert body["status"] == "running"
+    assert body["sos_non_removable"] is True

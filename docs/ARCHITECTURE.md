@@ -7,6 +7,8 @@
 - **Memory layer** (`backend/app/memory`): extraction and persistence of facts/preferences/tasks
 - **Policy layer** (`backend/app/policy`): strict local mode and internet permission requests
 - **Input layer** (`backend/app/inputs`): screen/voice ingestion with explicit sharing guard
+- **Control layer** (`backend/app/control`): consented assistive screen-control sessions and action queue
+- **Safety layer** (`backend/app/safety`): SOS emergency stop state and app-wide lock enforcement
 - **Data layer** (`backend/app/db`): SQLite persistence for conversation records
 - **Core layer** (`backend/app/core`): config and logging
 
@@ -26,6 +28,20 @@
 - Screen and voice context ingestion are disabled by default unless payload includes `shared=true`.
 - Accepted screen/voice content is persisted and processed through memory extraction.
 - This keeps screen/audio capture explicit and user-controlled.
+
+## Assistive control policy
+
+- Control requires explicit session consent (`shared=true`).
+- Action execution is two-step: queue -> approve/reject -> execute.
+- Write actions are blocked when session `allow_write=false`.
+- Screen context can be interpreted locally for email drafting and form assistance.
+
+## SOS shutdown policy
+
+- SOS is a permanent capability that cannot be removed via API.
+- Trigger endpoint: `POST /safety/sos/trigger`.
+- While active, all non-safety endpoints are blocked by middleware (`423 Locked`).
+- Safety status remains queryable through `GET /safety/status`.
 
 ## Local-first policy
 

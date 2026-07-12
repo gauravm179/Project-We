@@ -66,6 +66,13 @@ This repository currently contains **v0.2 backend foundation**:
 - `POST /permissions/{id}/decision` - approve/reject permission request
 - `POST /inputs/screen` - ingest screen context when `shared=true`
 - `POST /inputs/voice` - ingest voice transcript when `shared=true`
+- `POST /control/sessions` - open a consented control session
+- `POST /control/sessions/{id}/assist` - draft email/form guidance from shared screen context
+- `POST /control/actions` - queue a control action (pending approval)
+- `POST /control/actions/{id}/decision` - approve/reject queued action
+- `POST /control/actions/{id}/execute` - execute approved action record
+- `GET /safety/status` - read SOS emergency-stop state
+- `POST /safety/sos/trigger` - trigger immediate app shutdown (red button flow)
 
 ## Provider configuration
 
@@ -101,3 +108,18 @@ Valid internet modes:
 - `ask` (default): create a permission request when internet likely needed
 - `never`: refuse internet-required requests
 - `always`: allow normal response flow (internet tools still need to be implemented)
+
+## Assistive control mode
+
+Project We supports a safe, consent-based control workflow:
+
+- control session only starts with `shared=true`
+- write actions can be disabled per session (`allow_write=false`)
+- all actions are queued and require explicit approval before execution
+- screen context can be used to draft emails and suggest form field values
+
+## Red SOS emergency stop
+
+- A permanent red SOS button in UI should call `POST /safety/sos/trigger`.
+- Once triggered, non-safety endpoints are locked with `423 Locked`.
+- There is intentionally no API to disable/remove SOS behavior.
