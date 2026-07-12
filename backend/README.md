@@ -17,6 +17,18 @@ uvicorn app.main:app --reload
   - `GET /memory`
   - `GET /memory/summary`
 
+## Strict local + live input
+
+- Internet-gated chat in strict local mode:
+  - internet mode `ask` creates permission requests for likely live-data queries
+  - endpoints:
+    - `GET /permissions`
+    - `POST /permissions`
+    - `POST /permissions/{id}/decision`
+- Live inputs (only with explicit share):
+  - `POST /inputs/screen` requires `shared=true`
+  - `POST /inputs/voice` requires `shared=true`
+
 ## Test
 
 ```bash

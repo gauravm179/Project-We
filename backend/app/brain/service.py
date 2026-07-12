@@ -9,6 +9,7 @@ from app.brain.providers import build_provider
 from app.core.config import get_settings
 from app.db.models import ChatMessage
 from app.memory.service import MemoryService
+from app.policy.service import PolicyService
 from app.schemas.chat import ChatHistoryItem, ChatReply
 
 logger = logging.getLogger(__name__)
@@ -17,16 +18,55 @@ logger = logging.getLogger(__name__)
 class BrainService:
     def __init__(self) -> None:
         self._memory_service = MemoryService()
+        self._policy_service = PolicyService()
 
     async def chat(self, db: Session, user_message: str) -> ChatReply:
+        settings = get_settings()
+
         user_record = ChatMessage(role="user", content=user_message)
         db.add(user_record)
         db.flush()
 
         self._memory_service.extract_and_store(db=db, message=user_message)
 
-        provider = build_provider(get_settings())
-        assistant_text = await provider.generate(user_message)
+        needs_internet = self._policy_service.message_likely_needs_internet(user_message)
+        if settings.strict_local_mode and needs_internet and settings.internet_mode in {"ask", "never"}:
+            if settings.internet_mode == "never":
+                assistant_text = (
+                    "This request likely needs live internet data, but internet mode is set to NEVER. "
+                    "Update settings if you want online help."
+                )
+                assistant_record = ChatMessage(role="assistant", content=assistant_text)
+                db.add(assistant_record)
+                db.commit()
+                return ChatReply(
+                    response=assistant_text,
+                    requires_permission=False,
+                    required_capability="internet",
+                )
+
+            request = self._policy_service.create_permission_request(
+                db=db,
+                capability="internet",
+                reason=f"Need live internet data for: {user_message}",
+            )
+            assistant_text = (
+                "This request likely needs live internet data. "
+                "Please approve internet access to continue."
+            )
+            assistant_record = ChatMessage(role="assistant", content=assistant_text)
+            db.add(assistant_record)
+            db.commit()
+            return ChatReply(
+                response=assistant_text,
+                requires_permission=True,
+                required_capability="internet",
+                permission_request_id=request.id,
+            )
+
+        provider = build_provider(settings)
+        memory_context = self._memory_service.recent_context(db=db)
+        assistant_text = await provider.generate(user_message, memory_context=memory_context)
 
         assistant_record = ChatMessage(role="assistant", content=assistant_text)
         db.add(assistant_record)

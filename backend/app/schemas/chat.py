@@ -11,6 +11,9 @@ class ChatRequest(BaseModel):
 
 class ChatReply(BaseModel):
     response: str
+    requires_permission: bool = False
+    required_capability: str | None = None
+    permission_request_id: int | None = None
 
 
 class ChatHistoryItem(BaseModel):
