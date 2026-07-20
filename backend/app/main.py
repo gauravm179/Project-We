@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.api.routes import (
     chat,
@@ -26,6 +28,8 @@ from app.db.base import Base
 from app.db.session import get_engine, get_session_factory
 from app.runtime.service import heartbeat_loop, reset_start_time
 from app.safety.service import SafetyService
+
+STATIC_DIR = Path(__file__).parent / "static"
 
 
 @asynccontextmanager
@@ -91,3 +95,5 @@ app.include_router(search.router)
 app.include_router(specialists.router)
 app.include_router(skills.router)
 app.include_router(runtime.router)
+
+app.mount("/ui", StaticFiles(directory=str(STATIC_DIR), html=True), name="ui")
