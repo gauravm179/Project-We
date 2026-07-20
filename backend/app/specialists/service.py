@@ -91,7 +91,7 @@ class SpecialistService:
         return True
 
     async def chat(
-        self, db: Session, slug: str, user_message: str
+        self, db: Session, slug: str, user_message: str, model_override: str | None = None
     ) -> SpecialistChatReply | None:
         row = db.scalar(select(Specialist).where(Specialist.slug == slug))
         if not row or not row.enabled:
@@ -103,7 +103,7 @@ class SpecialistService:
         self._memory.extract_and_store(db=db, message=user_message)
 
         settings = get_settings()
-        provider = build_provider(settings)
+        provider = build_provider(settings, model_override=model_override)
         memory_context = self._memory.recent_context(db=db)
 
         skill_context = self._skills.build_skill_context(db, specialist_id=row.id)

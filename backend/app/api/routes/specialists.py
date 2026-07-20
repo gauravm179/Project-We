@@ -62,7 +62,7 @@ async def specialist_chat(
     request: SpecialistChatRequest,
     db: Session = Depends(get_db),
 ):
-    reply = await _service.chat(db, slug, request.message)
+    reply = await _service.chat(db, slug, request.message, model_override=request.model)
     if reply is None:
         raise HTTPException(status_code=404, detail="Specialist not found or disabled")
     return reply

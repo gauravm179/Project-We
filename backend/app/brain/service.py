@@ -20,7 +20,7 @@ class BrainService:
         self._memory_service = MemoryService()
         self._policy_service = PolicyService()
 
-    async def chat(self, db: Session, user_message: str) -> ChatReply:
+    async def chat(self, db: Session, user_message: str, model_override: str | None = None) -> ChatReply:
         settings = get_settings()
 
         user_record = ChatMessage(role="user", content=user_message)
@@ -64,7 +64,7 @@ class BrainService:
                 permission_request_id=request.id,
             )
 
-        provider = build_provider(settings)
+        provider = build_provider(settings, model_override=model_override)
         memory_context = self._memory_service.recent_context(db=db)
         assistant_text = await provider.generate(user_message, memory_context=memory_context)
 
