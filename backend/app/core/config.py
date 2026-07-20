@@ -21,6 +21,7 @@ class Settings:
     ollama_model: str = "llama3:8b"
     strict_local_mode: bool = True
     internet_mode: str = "ask"
+    searxng_base_url: str = ""
 
 
 @lru_cache(maxsize=1)
@@ -32,4 +33,5 @@ def get_settings() -> Settings:
         ollama_model=os.getenv("PROJECT_WE_OLLAMA_MODEL", "llama3:8b"),
         strict_local_mode=os.getenv("PROJECT_WE_STRICT_LOCAL_MODE", "true").lower() == "true",
         internet_mode=os.getenv("PROJECT_WE_INTERNET_MODE", "ask").lower(),
+        searxng_base_url=os.getenv("PROJECT_WE_SEARXNG_URL", ""),
     )

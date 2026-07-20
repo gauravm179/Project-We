@@ -7,10 +7,11 @@ from sqlalchemy.orm import Session
 
 from app.brain.providers import build_provider
 from app.core.config import get_settings
-from app.db.models import ChatMessage
+from app.db.models import ChatMessage, PermissionRequest
 from app.memory.service import MemoryService
 from app.policy.service import PolicyService
 from app.schemas.chat import ChatHistoryItem, ChatReply
+from app.search.service import SearchService
 
 logger = logging.getLogger(__name__)
 
@@ -19,8 +20,11 @@ class BrainService:
     def __init__(self) -> None:
         self._memory_service = MemoryService()
         self._policy_service = PolicyService()
+        self._search_service = SearchService()
 
-    async def chat(self, db: Session, user_message: str, model_override: str | None = None) -> ChatReply:
+    async def chat(
+        self, db: Session, user_message: str, model_override: str | None = None, permission_id: int | None = None
+    ) -> ChatReply:
         settings = get_settings()
 
         user_record = ChatMessage(role="user", content=user_message)
@@ -30,6 +34,16 @@ class BrainService:
         self._memory_service.extract_and_store(db=db, message=user_message)
 
         needs_internet = self._policy_service.message_likely_needs_internet(user_message)
+
+        # If permission_id provided, verify it's approved and do search
+        if permission_id:
+            perm = db.get(PermissionRequest, permission_id)
+            if perm and perm.status == "approved":
+                return await self._search_and_respond(
+                    db=db, user_message=user_message, model_override=model_override
+                )
+
+        # Standard internet permission flow
         if settings.strict_local_mode and needs_internet and settings.internet_mode in {"ask", "never"}:
             if settings.internet_mode == "never":
                 assistant_text = (
@@ -73,6 +87,45 @@ class BrainService:
         db.commit()
 
         return ChatReply(response=assistant_text)
+
+    async def _search_and_respond(
+        self, db: Session, user_message: str, model_override: str | None = None
+    ) -> ChatReply:
+        settings = get_settings()
+
+        search_results = await self._search_service.search(user_message)
+
+        if not search_results:
+            assistant_text = (
+                "Internet access was approved but the search returned no results. "
+                "Try rephrasing your question."
+            )
+            db.add(ChatMessage(role="assistant", content=assistant_text))
+            db.commit()
+            return ChatReply(response=assistant_text, search_results_used=False)
+
+        search_context = "Here are recent web search results:\n\n"
+        for i, result in enumerate(search_results, 1):
+            search_context += f"{i}. **{result.title}**\n   {result.url}\n   {result.snippet}\n\n"
+
+        provider = build_provider(settings, model_override=model_override)
+        memory_context = self._memory_service.recent_context(db=db)
+
+        augmented_prompt = (
+            f"The user asked: {user_message}\n\n"
+            f"You searched the internet (with user permission) and found:\n{search_context}\n"
+            "Using the search results above, provide a helpful and accurate answer. "
+            "Cite sources where relevant."
+        )
+
+        assistant_text = await provider.generate(
+            augmented_prompt, memory_context=memory_context
+        )
+
+        db.add(ChatMessage(role="assistant", content=assistant_text))
+        db.commit()
+
+        return ChatReply(response=assistant_text, search_results_used=True)
 
     def history(self, db: Session, limit: int = 50) -> list[ChatHistoryItem]:
         stmt = select(ChatMessage).order_by(ChatMessage.id.desc()).limit(limit)

@@ -16,6 +16,7 @@ from app.api.routes import (
     permissions,
     runtime,
     safety,
+    search,
     skills,
     specialists,
 )
@@ -86,6 +87,7 @@ app.include_router(inputs.router)
 app.include_router(permissions.router)
 app.include_router(control.router)
 app.include_router(safety.router)
+app.include_router(search.router)
 app.include_router(specialists.router)
 app.include_router(skills.router)
 app.include_router(runtime.router)

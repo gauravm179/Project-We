@@ -13,7 +13,12 @@ brain_service = BrainService()
 
 @router.post("", response_model=ChatReply)
 async def chat(request: ChatRequest, db: Session = Depends(get_db)) -> ChatReply:
-    return await brain_service.chat(db=db, user_message=request.message, model_override=request.model)
+    return await brain_service.chat(
+        db=db,
+        user_message=request.message,
+        model_override=request.model,
+        permission_id=request.permission_id,
+    )
 
 
 @router.get("/history", response_model=list[ChatHistoryItem])
