@@ -117,6 +117,28 @@ Once active, the skill's instructions and parameters are injected into every cha
 - `GET /runtime/heartbeats` — recent heartbeat history
 - Background heartbeat runs automatically every 60 seconds
 
+## Voice assistant (always listening)
+
+Project We supports an always-listening local voice mode with wake word activation:
+
+- `GET /voice/status` - get voice runtime status
+- `POST /voice/start` - start always-listening mode
+- `POST /voice/stop` - stop always-listening mode
+- `PATCH /voice/config` - update wake word, sensitivity, STT, and TTS settings
+
+Environment variables:
+
+- `PROJECT_WE_VOICE_ENABLED` (`true`/`false`)
+- `PROJECT_WE_VOICE_WAKE_WORD` (default: `ducus`)
+- `PROJECT_WE_VOICE_WAKE_SENSITIVITY` (default: `0.5`)
+- `PROJECT_WE_VOICE_STT_MODEL` (default: `base`)
+- `PROJECT_WE_VOICE_TTS_VOICE` (default: `en_US-amy-medium`)
+- `PROJECT_WE_VOICE_SILENCE_THRESHOLD` (default: `1.5`)
+
+The local chat UI is available at:
+
+- `GET /ui`
+
 ## Test
 
 ```bash

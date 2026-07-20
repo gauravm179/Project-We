@@ -58,6 +58,17 @@
         }
 
         .sos-btn:hover { background: #b71c1c; }
+        .voice-btn {
+            background: #455a64;
+            border-color: #455a64;
+            color: #fff;
+            font-weight: 600;
+        }
+
+        .voice-btn.active {
+            background: #00897b;
+            border-color: #00897b;
+        }
 
         .main-area {
             flex: 1;
@@ -256,6 +267,7 @@
                 <option value="qwen2.5:1.5b">Qwen 2.5 (fast)</option>
                 <option value="qwen2.5:7b">Qwen 2.5 7B</option>
             </select>
+            <button id="voiceBtn" class="voice-btn" onclick="toggleVoice()">Voice Off</button>
             <button class="sos-btn" onclick="triggerSOS()">SOS</button>
         </div>
     </header>
@@ -283,13 +295,14 @@
 
     <div class="status-bar">
         <span><span class="status-dot"></span> Running locally</span>
-        <span id="statusInfo">Model: llama3:8b | Port: 8001</span>
+        <span id="statusInfo">Model: llama3:8b | Voice: off | Port: 8001</span>
     </div>
 
     <script>
         const API = window.location.origin;
         let currentBot = '';
         let pendingPermission = null;
+        let voiceActive = false;
 
         async function sendMessage() {
             const input = document.getElementById('messageInput');
@@ -486,6 +499,34 @@
             document.getElementById('sendBtn').disabled = true;
         }
 
+        async function refreshVoiceStatus() {
+            try {
+                const resp = await fetch(`${API}/voice/status`);
+                if (!resp.ok) return;
+                const data = await resp.json();
+                voiceActive = data.active;
+                const btn = document.getElementById('voiceBtn');
+                btn.textContent = voiceActive ? 'Voice On' : 'Voice Off';
+                btn.classList.toggle('active', voiceActive);
+                const status = document.getElementById('statusInfo');
+                status.textContent = `Model: llama3:8b | Voice: ${voiceActive ? 'listening' : 'off'} | Port: 8001`;
+            } catch (e) {
+                // no-op
+            }
+        }
+
+        async function toggleVoice() {
+            const endpoint = voiceActive ? '/voice/stop' : '/voice/start';
+            const resp = await fetch(`${API}${endpoint}`, { method: 'POST' });
+            if (!resp.ok) {
+                const err = await resp.json();
+                addMessage('system', `Voice error: ${err.detail || 'failed to toggle voice'}`);
+                return;
+            }
+            await refreshVoiceStatus();
+            addMessage('system', voiceActive ? 'Voice mode enabled (wake word: Ducus)' : 'Voice mode disabled');
+        }
+
         function escapeHtml(text) {
             const div = document.createElement('div');
             div.textContent = text;
@@ -494,6 +535,8 @@
 
         // Load bots on startup
         loadBots();
+        refreshVoiceStatus();
+        setInterval(refreshVoiceStatus, 5000);
         addMessage('system', 'Welcome to Project We. Your AI assistant is running locally.');
     </script>
 </body>

@@ -21,8 +21,9 @@ from app.api.routes import (
     search,
     skills,
     specialists,
+    voice,
 )
-from app.core.config import DATA_DIR
+from app.core.config import DATA_DIR, get_settings
 from app.core.logging import configure_logging
 from app.db.base import Base
 from app.db.session import get_engine, get_session_factory
@@ -41,7 +42,10 @@ async def lifespan(_: FastAPI):
     heartbeat_task = asyncio.create_task(
         heartbeat_loop(get_session_factory(), interval_seconds=60.0)
     )
+    if get_settings().voice_enabled:
+        await voice.voice_assistant.start(get_settings())
     yield
+    await voice.voice_assistant.stop()
     heartbeat_task.cancel()
 
 
@@ -95,5 +99,6 @@ app.include_router(search.router)
 app.include_router(specialists.router)
 app.include_router(skills.router)
 app.include_router(runtime.router)
+app.include_router(voice.router)
 
 app.mount("/ui", StaticFiles(directory=str(STATIC_DIR), html=True), name="ui")

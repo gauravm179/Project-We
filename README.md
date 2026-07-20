@@ -4,7 +4,7 @@ Project We is a local-first personal assistant foundation designed to run on mac
 
 ## Current milestone
 
-This repository currently contains **v0.2 backend foundation**:
+This repository currently contains **v0.3 backend foundation**:
 
 - FastAPI backend with health and chat endpoints
 - SQLite persistence for conversation history
@@ -14,6 +14,7 @@ This repository currently contains **v0.2 backend foundation**:
 - Live screen and voice ingestion endpoints (only when explicitly shared)
 - AI provider abstraction
 - Optional Ollama provider integration
+- Always-listening voice assistant mode (wake-word activated)
 - Unit tests with pytest
 
 ## Design principles
@@ -50,9 +51,10 @@ This repository currently contains **v0.2 backend foundation**:
    uvicorn app.main:app --reload
    ```
 
-5. Open docs:
+5. Open docs and UI:
 
    - [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
+   - [http://127.0.0.1:8000/ui](http://127.0.0.1:8000/ui)
 
 ## API endpoints
 
@@ -73,6 +75,10 @@ This repository currently contains **v0.2 backend foundation**:
 - `POST /control/actions/{id}/execute` - execute approved action record
 - `GET /safety/status` - read SOS emergency-stop state
 - `POST /safety/sos/trigger` - trigger immediate app shutdown (red button flow)
+- `GET /voice/status` - check always-listening voice state
+- `POST /voice/start` - start wake-word voice loop
+- `POST /voice/stop` - stop wake-word voice loop
+- `PATCH /voice/config` - update wake-word/voice settings
 
 ## Provider configuration
 
