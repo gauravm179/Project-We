@@ -48,7 +48,9 @@ uvicorn app.main:app --reload
 
 ## Specialist bots
 
-Create domain-specific sub-bots that share memory but maintain isolated chat:
+Create domain-specific sub-bots that share memory but maintain isolated chat.
+
+`coding-bot` is bootstrapped automatically on startup with four active coding skills. See [docs/NOTES.md](../docs/NOTES.md) for full details.
 
 - `POST /specialists` — register a new specialist (slug, name, sector, system_prompt)
 - `GET /specialists` — list all specialists

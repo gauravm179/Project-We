@@ -23,6 +23,11 @@ This repository currently contains **v0.2 backend foundation**:
 - Transparent: explicit settings and modular services
 - Replaceable: model providers can be swapped without breaking memory/data
 
+## Documentation
+
+- [Architecture](docs/ARCHITECTURE.md) — service layers and data flow
+- [Agent notes](docs/NOTES.md) — system config, bot hierarchy, coding-bot training, dev commands
+
 ## Quick start
 
 1. Clone this repository.
