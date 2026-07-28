@@ -41,7 +41,7 @@ cd backend && source .venv/bin/activate
 uvicorn app.main:app --reload
 ```
 
-Then open http://127.0.0.1:8000/ui/ and ask questions. Check `GET /` for `"ai.reachable": true`.
+Then open http://127.0.0.1:8000/ (or `/ui/`) and ask questions. Check `GET /health` for `"ai.reachable": true`.
 
 ### Dev commands
 
