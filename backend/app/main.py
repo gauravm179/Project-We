@@ -6,7 +6,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api.routes import (
@@ -98,4 +98,17 @@ app.include_router(skills.router)
 app.include_router(runtime.router)
 
 STATIC_DIR = Path(__file__).parent / "static"
+CHAT_INDEX = STATIC_DIR / "index.html"
+
+
+@app.get("/ui", include_in_schema=False)
+def chat_ui_no_slash() -> RedirectResponse:
+    return RedirectResponse(url="/ui/", status_code=307)
+
+
+@app.get("/chat-ui", include_in_schema=False)
+def chat_ui_alias() -> FileResponse:
+    return FileResponse(CHAT_INDEX)
+
+
 app.mount("/ui", StaticFiles(directory=STATIC_DIR, html=True), name="ui")

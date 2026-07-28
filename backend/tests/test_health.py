@@ -10,6 +10,18 @@ def test_root_opens_chat_ui(client):
     assert "Code Assistant" in response.text
 
 
+def test_chat_ui_alias(client):
+    response = client.get("/chat-ui")
+    assert response.status_code == 200
+    assert "Code Assistant" in response.text
+
+
+def test_ui_without_trailing_slash_redirects(client):
+    response = client.get("/ui", follow_redirects=False)
+    assert response.status_code == 307
+    assert response.headers["location"] == "/ui/"
+
+
 def test_health(client):
     response = client.get("/health")
     assert response.status_code == 200
