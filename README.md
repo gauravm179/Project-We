@@ -27,6 +27,7 @@ This repository currently contains **v0.2 backend foundation**:
 
 - [Architecture](docs/ARCHITECTURE.md) — service layers and data flow
 - [Agent notes](docs/NOTES.md) — system config, bot hierarchy, coding-bot training, dev commands
+- **Browser notes:** http://127.0.0.1:8000/ui/notes.html (served live from the running backend)
 
 ## Quick start
 

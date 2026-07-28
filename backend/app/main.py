@@ -15,6 +15,7 @@ from app.api.routes import (
     health,
     inputs,
     memory,
+    notes,
     permissions,
     runtime,
     safety,
@@ -85,6 +86,7 @@ async def emergency_stop_guard(request: Request, call_next):
     return await call_next(request)
 
 app.include_router(health.router)
+app.include_router(notes.router)
 app.include_router(chat.router)
 app.include_router(memory.router)
 app.include_router(inputs.router)

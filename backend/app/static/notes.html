@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Project We — Agent Notes</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0f1117;
+      --panel: #171b26;
+      --border: #2c3347;
+      --text: #e8ecf5;
+      --muted: #9aa6bf;
+      --accent: #5b8cff;
+      --code: #1f2433;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+    }
+    .wrap {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+    }
+    a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+    a:hover { text-decoration: underline; }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 24px 28px;
+    }
+    h1 { margin-top: 0; font-size: 1.6rem; }
+    .meta { color: var(--muted); font-size: 0.9rem; margin-bottom: 20px; }
+    #content h2 {
+      margin-top: 28px;
+      padding-top: 8px;
+      border-top: 1px solid var(--border);
+      font-size: 1.15rem;
+    }
+    #content h3 { font-size: 1rem; color: #c5d0ea; }
+    #content pre {
+      background: var(--code);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px 14px;
+      overflow-x: auto;
+    }
+    #content code {
+      background: var(--code);
+      padding: 2px 6px;
+      border-radius: 6px;
+      font-size: 0.9em;
+    }
+    #content pre code { background: none; padding: 0; }
+    #content table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 12px 0;
+      font-size: 0.92rem;
+    }
+    #content th, #content td {
+      border: 1px solid var(--border);
+      padding: 8px 10px;
+      text-align: left;
+    }
+    #content th { background: #1f2433; }
+    #content ul { padding-left: 20px; }
+    #content hr { border: none; border-top: 1px solid var(--border); margin: 24px 0; }
+    .error { color: #ff6b6b; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="topbar">
+      <div>
+        <h1>Agent Notes</h1>
+        <p class="meta" id="meta">Loading notes from server…</p>
+      </div>
+      <div>
+        <a href="/ui/">← Back to Code Assistant</a>
+        &nbsp;·&nbsp;
+        <a href="/docs" target="_blank">API docs</a>
+      </div>
+    </div>
+    <article class="panel" id="content"></article>
+  </div>
+
+  <script>
+    function inlineFormat(text) {
+      return text
+        .replace(/`([^`]+)`/g, "<code>$1</code>")
+        .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+    }
+
+    function renderMarkdown(md) {
+      const lines = md.replace(/\r\n/g, "\n").split("\n");
+      const html = [];
+      let inCode = false;
+      let codeBuf = [];
+      let tableRows = [];
+
+      function flushTable() {
+        if (!tableRows.length) return;
+        const [header, ...body] = tableRows;
+        const heads = header.split("|").map((c) => c.trim()).filter(Boolean);
+        html.push("<table><thead><tr>" + heads.map((h) => `<th>${inlineFormat(h)}</th>`).join("") + "</tr></thead><tbody>");
+        for (const row of body) {
+          if (/^[\s|:-]+$/.test(row)) continue;
+          const cols = row.split("|").map((c) => c.trim()).filter(Boolean);
+          if (!cols.length) continue;
+          html.push("<tr>" + cols.map((c) => `<td>${inlineFormat(c)}</td>`).join("") + "</tr>");
+        }
+        html.push("</tbody></table>");
+        tableRows = [];
+      }
+
+      for (const line of lines) {
+        if (line.startsWith("```")) {
+          if (!inCode) {
+            flushTable();
+            inCode = true;
+            codeBuf = [];
+          } else {
+            html.push(`<pre><code>${codeBuf.join("\n").replace(/</g, "&lt;")}</code></pre>`);
+            inCode = false;
+          }
+          continue;
+        }
+        if (inCode) { codeBuf.push(line); continue; }
+
+        if (line.includes("|") && line.trim().startsWith("|")) {
+          tableRows.push(line);
+          continue;
+        }
+        flushTable();
+
+        if (line.startsWith("### ")) html.push(`<h3>${inlineFormat(line.slice(4))}</h3>`);
+        else if (line.startsWith("## ")) html.push(`<h2>${inlineFormat(line.slice(3))}</h2>`);
+        else if (line.startsWith("# ")) html.push(`<h1>${inlineFormat(line.slice(2))}</h1>`);
+        else if (line === "---") html.push("<hr>");
+        else if (line.startsWith("- ")) html.push(`<ul><li>${inlineFormat(line.slice(2))}</li></ul>`);
+        else if (line.trim() === "") html.push("");
+        else html.push(`<p>${inlineFormat(line)}</p>`);
+      }
+      flushTable();
+      return html.join("\n").replace(/<\/ul>\n<ul>/g, "");
+    }
+
+    async function loadNotes() {
+      const content = document.getElementById("content");
+      const meta = document.getElementById("meta");
+      try {
+        const response = await fetch("/notes");
+        if (!response.ok) throw new Error("Could not load notes");
+        const data = await response.json();
+        meta.textContent = `Source: ${data.source} · always served from the running backend`;
+        content.innerHTML = renderMarkdown(data.markdown);
+      } catch (error) {
+        meta.textContent = "Failed to load notes";
+        meta.className = "meta error";
+        content.innerHTML = `<p class="error">${error.message}</p><p>Try <a href="/notes/raw">/notes/raw</a> or check that the server is running.</p>`;
+      }
+    }
+
+    loadNotes();
+  </script>
+</body>
+</html>

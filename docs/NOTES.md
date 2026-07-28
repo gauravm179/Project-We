@@ -40,6 +40,12 @@ uvicorn app.main:app --reload   # start API on :8000
 
 API docs: http://127.0.0.1:8000/docs
 
+**Agent notes (always available in browser):**
+
+- Notes page: http://127.0.0.1:8000/ui/notes.html
+- Notes API: http://127.0.0.1:8000/notes
+- Raw markdown: http://127.0.0.1:8000/notes/raw
+
 ---
 
 ## 2. How bots work
@@ -95,10 +101,10 @@ Only **active** skills affect chat responses.
 
 On every app startup, `backend/app/bootstrap.py` automatically:
 
-1. Creates `coding-bot` if it does not exist
-2. Registers four coding skills
+1. Creates `coding-bot` if it does not exist (or refreshes its profile)
+2. Registers five coding skills
 3. Assigns each skill to `coding-bot`
-4. Activates all four skills
+4. Activates all five skills
 
 ### Coding bot profile
 
@@ -164,18 +170,30 @@ Memory is **not** the same as chat history. Chat history is per-bot; memory is g
 
 ---
 
-## 5. Branch and PR status
+## 5. Local browser UI
+
+| Page | URL | Purpose |
+|------|-----|---------|
+| Code Assistant chat | http://127.0.0.1:8000/ui/ | Chat with `coding-bot` |
+| Agent notes | http://127.0.0.1:8000/ui/notes.html | Full notes (this document) |
+| API docs | http://127.0.0.1:8000/docs | Swagger UI |
+
+Notes are **served live** from `docs/NOTES.md` by the backend — they do not disappear when you restart the server as long as the file exists in the repo.
+
+---
+
+## 6. Branch and PR status
 
 | Item | Value |
 |------|-------|
 | Base branch | `feature/v0.2-memory` |
 | Feature branch | `cursor/coding-bot-training-c355` |
 | PR | #4 — bootstrap trained coding-bot |
-| Tests | 41 passing |
+| Tests | 45+ passing |
 
 ---
 
-## 6. What's not built yet
+## 7. What's not built yet
 
 - Specialist auto-routing (master bot picking the right sub-bot automatically)
 - Skill auto-suggestion from conversation
@@ -185,7 +203,7 @@ Memory is **not** the same as chat history. Chat history is per-bot; memory is g
 
 ---
 
-## 7. Quick reference: add a new trained bot
+## 8. Quick reference: add a new trained bot
 
 ```bash
 # 1. Create the specialist
