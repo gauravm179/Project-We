@@ -58,6 +58,7 @@ This repository currently contains **v0.2 backend foundation**:
 5. Open docs:
 
    - [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
+   - [http://127.0.0.1:8000/ui/](http://127.0.0.1:8000/ui/) — local browser chat for `coding-bot`
 
 ## API endpoints
 

@@ -117,12 +117,22 @@ On every app startup, `backend/app/bootstrap.py` automatically:
 | `write-tests` | Generate pytest-style tests | `framework=pytest`, `coverage_goal=critical paths` |
 | `debug-errors` | Diagnose stack traces and logs | `runtime=python`, `log_source=user-provided` |
 | `refactor-code` | Improve structure with minimal diffs | `style=minimal-diff` |
+| `build-logic` | Design algorithms and build features from requirements | all supported languages |
+
+### Supported languages (18)
+
+Python, JavaScript, TypeScript, Java, C#, C++, C, Go, Rust, Ruby, PHP, Swift, Kotlin, SQL, Bash/Shell, HTML/CSS, R, Scala.
+
+The bot is trained to **understand logic** (algorithms, control flow, debugging) and **build features** (scaffold modules, APIs, tests, UI wiring).
 
 ### Verify coding bot
 
 ```bash
-# List all bots
-curl http://127.0.0.1:8000/specialists
+# Open local browser UI
+open http://127.0.0.1:8000/ui/
+
+# Or check supported languages and capabilities
+curl http://127.0.0.1:8000/specialists/coding-bot/capabilities
 
 # See trained skills
 curl http://127.0.0.1:8000/specialists/coding-bot/skills

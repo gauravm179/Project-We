@@ -5,9 +5,10 @@ import logging
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.coding.capabilities import SUPPORTED_LANGUAGES
 from app.db.models import Skill, SkillAssignment, Specialist
 from app.schemas.skill import SkillCreate, SkillLearnRequest
-from app.schemas.specialist import SpecialistCreate
+from app.schemas.specialist import SpecialistCreate, SpecialistUpdate
 from app.skills.service import SkillService
 from app.specialists.service import SpecialistService
 
@@ -15,17 +16,28 @@ logger = logging.getLogger(__name__)
 
 CODING_BOT_SLUG = "coding-bot"
 
+_LANGUAGE_LIST = ", ".join(lang["name"] for lang in SUPPORTED_LANGUAGES)
+
 CODING_BOT = SpecialistCreate(
     slug=CODING_BOT_SLUG,
     name="Code Assistant",
     sector="coding",
-    description="Specialist sub-bot for writing, reviewing, and debugging code.",
+    description=(
+        "Specialist sub-bot for writing, reviewing, debugging, and building code across "
+        f"{len(SUPPORTED_LANGUAGES)} languages."
+    ),
     system_prompt=(
         "You are an expert software engineer working under Project We, the master assistant. "
-        "You write clean, tested, production-quality code. You explain trade-offs clearly, "
-        "prefer minimal diffs, follow existing project conventions, and consider edge cases. "
+        "You understand program logic deeply: algorithms, data structures, control flow, state, "
+        "and how systems are built end-to-end. "
+        "You write clean, tested, production-quality code and can build features from requirements, "
+        "pseudocode, or partial implementations. "
+        "You explain trade-offs clearly, prefer minimal diffs, follow existing project conventions, "
+        "and consider edge cases. "
         "When reviewing code, focus on correctness, security, performance, and maintainability. "
-        "When debugging, reason step-by-step from symptoms to root cause."
+        "When debugging, reason step-by-step from symptoms to root cause. "
+        f"You can help with these languages: {_LANGUAGE_LIST}. "
+        "If the user does not specify a language, infer it from context or ask briefly."
     ),
 )
 
@@ -89,13 +101,36 @@ CODING_SKILLS: tuple[SkillCreate, ...] = (
             "style": {"type": "string", "default": "minimal-diff"},
         },
     ),
+    SkillCreate(
+        slug="build-logic",
+        name="Build Logic",
+        category="coding",
+        description="Design and implement program logic and features from requirements.",
+        instructions=(
+            "Break the request into inputs, outputs, data structures, and control flow. "
+            "State assumptions, outline the algorithm, then provide working code. "
+            "Cover edge cases, validation, and error paths. "
+            "Explain how the logic fits together so the user can extend it."
+        ),
+        parameters_schema={
+            "languages": {
+                "type": "list",
+                "description": "Languages the bot should use for this build",
+            },
+            "delivery": {"type": "string", "default": "working code with brief explanation"},
+        },
+    ),
 )
 
 CODING_SKILL_PARAMETERS: dict[str, dict] = {
-    "code-review": {"language": "python", "focus": "correctness"},
-    "write-tests": {"framework": "pytest", "coverage_goal": "critical paths"},
-    "debug-errors": {"runtime": "python", "log_source": "user-provided"},
+    "code-review": {"language": "any", "focus": "correctness"},
+    "write-tests": {"framework": "auto-detect", "coverage_goal": "critical paths"},
+    "debug-errors": {"runtime": "auto-detect", "log_source": "user-provided"},
     "refactor-code": {"style": "minimal-diff"},
+    "build-logic": {
+        "languages": [lang["id"] for lang in SUPPORTED_LANGUAGES],
+        "delivery": "working code with brief explanation",
+    },
 }
 
 
@@ -104,12 +139,23 @@ def bootstrap_coding_bot(db: Session) -> None:
     specialists = SpecialistService()
     skills = SkillService()
 
-    if specialists.get_by_slug(db, CODING_BOT_SLUG) is None:
+    existing = specialists.get_by_slug(db, CODING_BOT_SLUG)
+    if existing is None:
         created = specialists.create(db, CODING_BOT)
         if created is None:
             logger.warning("Could not create %s; slug may already exist", CODING_BOT_SLUG)
             return
         logger.info("Bootstrapped specialist %s under master bot", CODING_BOT_SLUG)
+    else:
+        specialists.update(
+            db,
+            CODING_BOT_SLUG,
+            SpecialistUpdate(
+                system_prompt=CODING_BOT.system_prompt,
+                description=CODING_BOT.description,
+            ),
+        )
+        logger.info("Refreshed %s profile with latest language and build capabilities", CODING_BOT_SLUG)
 
     for skill_payload in CODING_SKILLS:
         if skills.get_skill(db, skill_payload.slug) is None:

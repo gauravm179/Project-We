@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.api.routes import (
     chat,
@@ -92,3 +94,6 @@ app.include_router(safety.router)
 app.include_router(specialists.router)
 app.include_router(skills.router)
 app.include_router(runtime.router)
+
+STATIC_DIR = Path(__file__).parent / "static"
+app.mount("/ui", StaticFiles(directory=STATIC_DIR, html=True), name="ui")

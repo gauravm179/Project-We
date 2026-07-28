@@ -15,7 +15,13 @@ def test_coding_bot_bootstrapped_on_startup(client: TestClient):
 def test_coding_bot_has_trained_active_skills(client: TestClient):
     skills = client.get("/specialists/coding-bot/skills").json()
     skill_slugs = {skill["skill_slug"] for skill in skills}
-    assert skill_slugs == {"code-review", "write-tests", "debug-errors", "refactor-code"}
+    assert skill_slugs == {
+        "code-review",
+        "write-tests",
+        "debug-errors",
+        "refactor-code",
+        "build-logic",
+    }
     assert all(skill["status"] == "active" for skill in skills)
 
 

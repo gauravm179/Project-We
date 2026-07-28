@@ -3,7 +3,9 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from app.coding.capabilities import BUILD_CAPABILITIES, LOGIC_CAPABILITIES, SUPPORTED_LANGUAGES
 from app.db.session import get_db
+from app.schemas.coding import CodingBotCapabilities, LanguageCapability
 from app.schemas.skill import SkillAssignmentRecord, SkillLearnRequest
 from app.schemas.specialist import (
     SpecialistChatReply,
@@ -32,6 +34,27 @@ def create_specialist(payload: SpecialistCreate, db: Session = Depends(get_db)):
 @router.get("", response_model=list[SpecialistRecord])
 def list_specialists(db: Session = Depends(get_db)):
     return _service.list_all(db)
+
+
+@router.get("/coding-bot/capabilities", response_model=CodingBotCapabilities)
+def coding_bot_capabilities(db: Session = Depends(get_db)):
+    record = _service.get_by_slug(db, "coding-bot")
+    if not record:
+        raise HTTPException(status_code=404, detail="Coding bot not found")
+
+    active_skills = _skill_service.list_assignments(db, specialist_slug="coding-bot")
+    trained = [skill.skill_slug for skill in active_skills if skill.status == "active"]
+
+    return CodingBotCapabilities(
+        slug=record.slug,
+        name=record.name,
+        sector=record.sector,
+        languages=[LanguageCapability(**lang) for lang in SUPPORTED_LANGUAGES],
+        logic_capabilities=list(LOGIC_CAPABILITIES),
+        build_capabilities=list(BUILD_CAPABILITIES),
+        trained_skills=trained,
+        browser_ui="/ui/",
+    )
 
 
 @router.get("/{slug}", response_model=SpecialistRecord)
