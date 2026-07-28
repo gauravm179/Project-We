@@ -14,11 +14,13 @@ DEFAULT_DB_PATH = DATA_DIR / "project_we.db"
 @dataclass(frozen=True)
 class Settings:
     app_name: str = "Project We"
-    app_version: str = "0.1.0"
+    app_version: str = "0.3.0"
     provider: str = "echo"
     database_url: str = f"sqlite:///{DEFAULT_DB_PATH}"
     ollama_base_url: str = "http://127.0.0.1:11434"
     ollama_model: str = "qwen2.5:7b"
+    strict_local_mode: bool = True
+    internet_mode: str = "ask"
 
 
 @lru_cache(maxsize=1)
@@ -28,4 +30,6 @@ def get_settings() -> Settings:
         database_url=os.getenv("PROJECT_WE_DATABASE_URL", f"sqlite:///{DEFAULT_DB_PATH}"),
         ollama_base_url=os.getenv("PROJECT_WE_OLLAMA_BASE_URL", "http://127.0.0.1:11434"),
         ollama_model=os.getenv("PROJECT_WE_OLLAMA_MODEL", "qwen2.5:7b"),
+        strict_local_mode=os.getenv("PROJECT_WE_STRICT_LOCAL_MODE", "true").lower() == "true",
+        internet_mode=os.getenv("PROJECT_WE_INTERNET_MODE", "ask").lower(),
     )

@@ -16,12 +16,13 @@ def get_engine():
     return create_engine(settings.database_url, future=True, connect_args=connect_args)
 
 
-def _session_local():
+@lru_cache(maxsize=1)
+def get_session_factory():
     return sessionmaker(autocommit=False, autoflush=False, bind=get_engine(), class_=Session)
 
 
 def get_db() -> Generator[Session, None, None]:
-    db = _session_local()()
+    db = get_session_factory()()
     try:
         yield db
     finally:

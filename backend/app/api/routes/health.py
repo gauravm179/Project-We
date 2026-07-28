@@ -6,10 +6,11 @@ router = APIRouter()
 
 
 @router.get("/")
-def root() -> dict[str, str]:
+def root() -> dict[str, str | bool]:
     settings = get_settings()
     return {
         "name": settings.app_name,
         "version": settings.app_version,
         "status": "running",
+        "sos_non_removable": True,
     }
