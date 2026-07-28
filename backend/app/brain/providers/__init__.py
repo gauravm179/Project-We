@@ -9,5 +9,8 @@ def build_provider(settings: Settings) -> AIProvider:
         return OllamaProvider(
             base_url=settings.ollama_base_url,
             model=settings.ollama_model,
+            timeout_seconds=settings.ollama_timeout_seconds,
+            temperature=settings.ollama_temperature,
+            reasoning=settings.ollama_reasoning,
         )
     return EchoProvider()

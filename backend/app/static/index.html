@@ -206,6 +206,7 @@
     <aside class="panel">
       <h1>Code Assistant</h1>
       <p class="subtitle">Specialist bot under Project We master assistant. Local browser UI.</p>
+      <p id="provider-status" class="subtitle">AI provider: loading…</p>
 
       <div>
         <a href="/ui/notes.html" style="color:#5b8cff;text-decoration:none;font-size:0.9rem;">📋 Agent Notes</a>
@@ -323,6 +324,22 @@
     }
 
     async function loadCapabilities() {
+      const root = await fetch("/");
+      if (root.ok) {
+        const info = await root.json();
+        const ai = info.ai || {};
+        const providerStatus = document.getElementById("provider-status");
+        if (providerStatus) {
+          if (ai.provider === "ollama") {
+            const reach = ai.reachable ? "online" : "offline";
+            const avail = ai.model_available ? "model ready" : "model missing — run ollama pull";
+            providerStatus.textContent = `AI: Ollama / ${ai.model_configured || ai.model} (${reach}, ${avail})`;
+          } else {
+            providerStatus.textContent = "AI: echo stub (set PROJECT_WE_PROVIDER=ollama + llama3.2 for real answers)";
+          }
+        }
+      }
+
       const response = await fetch("/specialists/coding-bot/capabilities");
       if (!response.ok) {
         throw new Error("Could not load coding-bot capabilities");

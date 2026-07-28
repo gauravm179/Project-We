@@ -22,10 +22,26 @@ Working notes for system configuration, bot hierarchy, and how to run the projec
 |----------|---------|---------|
 | `PROJECT_WE_PROVIDER` | `echo` | AI backend: `echo` or `ollama` |
 | `PROJECT_WE_DATABASE_URL` | `sqlite:///.../data/project_we.db` | Database location |
-| `PROJECT_WE_OLLAMA_BASE_URL` | `http://127.0.0.1:11434` | Ollama API URL |
-| `PROJECT_WE_OLLAMA_MODEL` | `qwen2.5:7b` | Ollama model name |
+| `PROJECT_WE_OLLAMA_BASE_URL` | `http://127.0.0.1:11434` | Ollama endpoint |
+| `PROJECT_WE_OLLAMA_MODEL` | `llama3.2` | Local model name (Llama recommended) |
+| `PROJECT_WE_OLLAMA_REASONING` | `true` | Ask the model to reason step by step |
+| `PROJECT_WE_OLLAMA_TEMPERATURE` | `0.2` | Lower = more focused answers |
+| `PROJECT_WE_OLLAMA_TIMEOUT_SECONDS` | `120` | Wait time for local generation |
 | `PROJECT_WE_STRICT_LOCAL_MODE` | `true` | Enforce local-first policy |
 | `PROJECT_WE_INTERNET_MODE` | `ask` | `ask`, `never`, or `always` |
+
+### Local Llama for questions + reasoning
+
+```bash
+ollama pull llama3.2
+export PROJECT_WE_PROVIDER=ollama
+export PROJECT_WE_OLLAMA_MODEL=llama3.2
+export PROJECT_WE_OLLAMA_REASONING=true
+cd backend && source .venv/bin/activate
+uvicorn app.main:app --reload
+```
+
+Then open http://127.0.0.1:8000/ui/ and ask questions. Check `GET /` for `"ai.reachable": true`.
 
 ### Dev commands
 

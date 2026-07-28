@@ -83,22 +83,55 @@ This repository currently contains **v0.2 backend foundation**:
 
 ## Provider configuration
 
-By default, the backend uses a local echo provider.
+By default, the backend uses a local echo provider (for tests).
 
-To use Ollama:
+### Use a local Llama model (recommended for real Q&A + reasoning)
+
+1. Install and start [Ollama](https://ollama.com) on your machine.
+2. Pull a Llama model:
+
+```bash
+ollama pull llama3.2
+# stronger reasoning/coding options:
+# ollama pull llama3.1:8b
+# ollama pull llama3.1:70b
+```
+
+3. Start Project We with Ollama:
 
 ```bash
 export PROJECT_WE_PROVIDER=ollama
-export PROJECT_WE_OLLAMA_MODEL=qwen2.5:7b
+export PROJECT_WE_OLLAMA_MODEL=llama3.2
 export PROJECT_WE_OLLAMA_BASE_URL=http://127.0.0.1:11434
+export PROJECT_WE_OLLAMA_REASONING=true
+uvicorn app.main:app --reload
 ```
 
 Windows PowerShell:
 
 ```powershell
 $env:PROJECT_WE_PROVIDER="ollama"
-$env:PROJECT_WE_OLLAMA_MODEL="qwen2.5:7b"
+$env:PROJECT_WE_OLLAMA_MODEL="llama3.2"
 $env:PROJECT_WE_OLLAMA_BASE_URL="http://127.0.0.1:11434"
+$env:PROJECT_WE_OLLAMA_REASONING="true"
+```
+
+Then open http://127.0.0.1:8000/ui/ and ask coding/reasoning questions.
+
+Check provider status:
+
+```bash
+curl http://127.0.0.1:8000/
+```
+
+Look for `"ai": { "provider": "ollama", "model": "llama3.2", "reachable": true, ... }`.
+
+### Older Ollama example (Qwen)
+
+```bash
+export PROJECT_WE_PROVIDER=ollama
+export PROJECT_WE_OLLAMA_MODEL=qwen2.5:7b
+export PROJECT_WE_OLLAMA_BASE_URL=http://127.0.0.1:11434
 ```
 
 ## Strict local policy defaults

@@ -6,3 +6,5 @@ def test_root(client):
     assert body["version"] == "0.3.0"
     assert body["status"] == "running"
     assert body["sos_non_removable"] is True
+    assert body["ai"]["provider"] == "echo"
+    assert body["ai"]["model"] == "echo"

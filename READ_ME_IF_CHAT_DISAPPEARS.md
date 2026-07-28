@@ -19,3 +19,5 @@ uvicorn app.main:app --reload
 - URL: http://127.0.0.1:8000/ui/
 - Skills: code-review, write-tests, debug-errors, refactor-code, build-logic
 - Languages: Python, JS, TS, Java, C#, C++, C, Go, Rust, Ruby, PHP, Swift, Kotlin, SQL, Bash, HTML/CSS, R, Scala
+- Learns from mistakes via `/specialists/coding-bot/feedback`
+- Uses local guidelines when stuck; live internet docs need permission approval
