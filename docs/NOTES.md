@@ -131,6 +131,28 @@ Python, JavaScript, TypeScript, Java, C#, C++, C, Go, Rust, Ruby, PHP, Swift, Ko
 
 The bot is trained to **understand logic** (algorithms, control flow, debugging) and **build features** (scaffold modules, APIs, tests, UI wiring).
 
+### Learn from mistakes
+
+Teach the bot corrections with:
+
+```bash
+curl -X POST http://127.0.0.1:8000/specialists/coding-bot/feedback \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "mistake": "Said mutable defaults are fine",
+    "correction": "Use None and create the object inside the function",
+    "language": "python"
+  }'
+```
+
+Lessons are stored and injected into future coding-bot replies.
+
+### Internet guidelines when stuck
+
+- Local curated guidelines (PEP 8, MDN, Go, Rust, etc.) are used automatically when the bot detects you are stuck.
+- Live internet docs require consent: ask with words like `latest online guidelines`, then approve via `POST /permissions/{id}/decision`.
+- Browser UI has **Teach coding-bot** and **Approve internet** controls.
+
 ### Verify coding bot
 
 ```bash

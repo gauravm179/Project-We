@@ -221,6 +221,15 @@
 
       <div class="section-title">Trained skills</div>
       <div id="trained-skills" class="chips"></div>
+
+      <div class="section-title">Learn from a mistake</div>
+      <form id="feedback-form" class="composer">
+        <textarea id="mistake-input" placeholder="What did the bot get wrong?" required style="min-height:70px"></textarea>
+        <textarea id="correction-input" placeholder="What is the correct approach?" required style="min-height:70px"></textarea>
+        <button type="submit" class="secondary" id="teach-btn">Teach coding-bot</button>
+      </form>
+      <div class="section-title">Lessons learned</div>
+      <ul id="lessons-list" class="list"></ul>
     </aside>
 
     <main class="panel chat-panel">
@@ -251,11 +260,16 @@
     const logicListEl = document.getElementById("logic-list");
     const buildListEl = document.getElementById("build-list");
     const trainedSkillsEl = document.getElementById("trained-skills");
+    const lessonsListEl = document.getElementById("lessons-list");
     const statusEl = document.getElementById("status");
     const formEl = document.getElementById("chat-form");
+    const feedbackFormEl = document.getElementById("feedback-form");
+    const mistakeInput = document.getElementById("mistake-input");
+    const correctionInput = document.getElementById("correction-input");
     const inputEl = document.getElementById("message-input");
     const sendBtn = document.getElementById("send-btn");
     const clearBtn = document.getElementById("clear-btn");
+    let pendingPermissionId = null;
 
     function setStatus(text, kind = "") {
       statusEl.textContent = text;
@@ -282,6 +296,30 @@
         .replaceAll("&", "&amp;")
         .replaceAll("<", "&lt;")
         .replaceAll(">", "&gt;");
+    }
+
+    async function loadLessons() {
+      const response = await fetch("/specialists/coding-bot/lessons?limit=10");
+      if (!response.ok) return;
+      const lessons = await response.json();
+      if (!lessons.length) {
+        lessonsListEl.innerHTML = "<li>No mistake lessons yet.</li>";
+        return;
+      }
+      lessonsListEl.innerHTML = lessons
+        .map((lesson) => `<li><strong>Wrong:</strong> ${escapeHtml(lesson.mistake)}<br><strong>Fix:</strong> ${escapeHtml(lesson.correction)}</li>`)
+        .join("");
+    }
+
+    async function approveInternet(permissionId) {
+      const response = await fetch(`/permissions/${permissionId}/decision`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ approve: true }),
+      });
+      if (!response.ok) throw new Error("Could not approve internet access");
+      pendingPermissionId = null;
+      setStatus("Internet approved. Ask again to use live guidelines.", "ok");
     }
 
     async function loadCapabilities() {
@@ -335,7 +373,19 @@
 
         const data = await response.json();
         appendMessage("assistant", data.response);
-        setStatus("Ready", "ok");
+        if (data.requires_permission && data.permission_request_id) {
+          pendingPermissionId = data.permission_request_id;
+          appendMessage(
+            "assistant",
+            `Internet permission requested (#${data.permission_request_id}). Click "Approve internet" to allow live official docs.`
+          );
+          setStatus("Waiting for internet approval", "error");
+        } else {
+          const flags = [];
+          if (data.used_lessons) flags.push("used past lessons");
+          if (data.used_guidelines) flags.push("used guidelines");
+          setStatus(flags.length ? `Ready · ${flags.join(" · ")}` : "Ready", "ok");
+        }
       } catch (error) {
         setStatus(error.message || "Request failed", "error");
       } finally {
@@ -351,12 +401,54 @@
       await sendMessage(message);
     });
 
+    feedbackFormEl.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const mistake = mistakeInput.value.trim();
+      const correction = correctionInput.value.trim();
+      if (!mistake || !correction) return;
+      const response = await fetch("/specialists/coding-bot/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mistake, correction }),
+      });
+      if (!response.ok) {
+        setStatus("Could not save lesson", "error");
+        return;
+      }
+      mistakeInput.value = "";
+      correctionInput.value = "";
+      await loadLessons();
+      setStatus("Lesson saved. Coding-bot will use it next time.", "ok");
+    });
+
     clearBtn.addEventListener("click", () => {
       messagesEl.innerHTML = '<div class="empty">Ask for code, logic help, debugging, tests, or a full feature build.</div>';
       setStatus("Chat cleared locally. Server history is unchanged.", "ok");
     });
 
-    Promise.all([loadCapabilities(), loadHistory()]).catch((error) => {
+    // Expose approve helper for the inline prompt button text.
+    window.approvePendingInternet = async () => {
+      if (!pendingPermissionId) {
+        setStatus("No pending internet request", "error");
+        return;
+      }
+      try {
+        await approveInternet(pendingPermissionId);
+      } catch (error) {
+        setStatus(error.message, "error");
+      }
+    };
+
+    // Add approve button next to clear.
+    const approveBtn = document.createElement("button");
+    approveBtn.type = "button";
+    approveBtn.className = "secondary";
+    approveBtn.id = "approve-btn";
+    approveBtn.textContent = "Approve internet";
+    approveBtn.addEventListener("click", () => window.approvePendingInternet());
+    clearBtn.parentElement.insertBefore(approveBtn, clearBtn);
+
+    Promise.all([loadCapabilities(), loadHistory(), loadLessons()]).catch((error) => {
       setStatus(error.message, "error");
     });
   </script>

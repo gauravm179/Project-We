@@ -144,6 +144,22 @@ class SpecialistMessage(Base):
     )
 
 
+class CodingLesson(Base):
+    __tablename__ = "coding_lessons"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    specialist_id: Mapped[int] = mapped_column(ForeignKey("specialists.id"), nullable=False)
+    mistake: Mapped[str] = mapped_column(Text, nullable=False)
+    correction: Mapped[str] = mapped_column(Text, nullable=False)
+    language: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    topic: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+
+
 class Skill(Base):
     __tablename__ = "skills"
 

@@ -19,6 +19,17 @@ class PolicyService:
     def message_likely_needs_internet(self, message: str) -> bool:
         return bool(_INTERNET_HINT_PATTERN.search(message))
 
+    def has_approved_capability(self, db: Session, capability: str) -> bool:
+        row = db.scalar(
+            select(PermissionRequest)
+            .where(
+                PermissionRequest.capability == capability,
+                PermissionRequest.status == "approved",
+            )
+            .order_by(PermissionRequest.id.desc())
+        )
+        return row is not None
+
     def create_permission_request(self, db: Session, capability: str, reason: str) -> PermissionRecord:
         row = PermissionRequest(
             capability=capability,
