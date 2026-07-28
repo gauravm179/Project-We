@@ -56,14 +56,18 @@ This repository currently contains **v0.2 backend foundation**:
    uvicorn app.main:app --reload
    ```
 
-5. Open docs:
+5. Open the chat UI:
 
-   - [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
-   - [http://127.0.0.1:8000/ui/](http://127.0.0.1:8000/ui/) — local browser chat for `coding-bot`
+   - [http://127.0.0.1:8000/](http://127.0.0.1:8000/) (redirects to chat)
+   - [http://127.0.0.1:8000/ui/](http://127.0.0.1:8000/ui/) — coding-bot chat
+   - [http://127.0.0.1:8000/ui/notes.html](http://127.0.0.1:8000/ui/notes.html) — notes
+   - [http://127.0.0.1:8000/health](http://127.0.0.1:8000/health) — JSON status
+   - [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs) — API docs
 
 ## API endpoints
 
-- `GET /` - service metadata and status
+- `GET /` - redirects to coding-bot chat UI (`/ui/`)
+- `GET /health` - service metadata, AI provider status
 - `POST /chat` - send message and get assistant response
 - `GET /chat/history` - read persisted chat history
 - `GET /memory` - read extracted structured memory
@@ -121,7 +125,7 @@ Then open http://127.0.0.1:8000/ui/ and ask coding/reasoning questions.
 Check provider status:
 
 ```bash
-curl http://127.0.0.1:8000/
+curl http://127.0.0.1:8000/health
 ```
 
 Look for `"ai": { "provider": "ollama", "model": "llama3.2", "reachable": true, ... }`.

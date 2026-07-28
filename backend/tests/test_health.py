@@ -1,5 +1,17 @@
-def test_root(client):
-    response = client.get("/")
+def test_root_redirects_to_chat_ui(client):
+    response = client.get("/", follow_redirects=False)
+    assert response.status_code == 307
+    assert response.headers["location"] == "/ui/"
+
+
+def test_root_opens_chat_ui(client):
+    response = client.get("/", follow_redirects=True)
+    assert response.status_code == 200
+    assert "Code Assistant" in response.text
+
+
+def test_health(client):
+    response = client.get("/health")
     assert response.status_code == 200
     body = response.json()
     assert body["name"] == "Project We"
@@ -8,3 +20,4 @@ def test_root(client):
     assert body["sos_non_removable"] is True
     assert body["ai"]["provider"] == "echo"
     assert body["ai"]["model"] == "echo"
+    assert body["chat_ui"] == "/ui/"

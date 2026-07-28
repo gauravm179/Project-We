@@ -324,7 +324,7 @@
     }
 
     async function loadCapabilities() {
-      const root = await fetch("/");
+      const root = await fetch("/health");
       if (root.ok) {
         const info = await root.json();
         const ai = info.ai || {};
