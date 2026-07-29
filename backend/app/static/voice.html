@@ -183,25 +183,29 @@
         if (!res.ok) throw new Error("status failed");
         const data = await res.json();
         depsReady = !!data.deps_ready;
-        wakeWarn.style.display = depsReady ? "none" : "block";
-        document.getElementById("wake-start").disabled = !depsReady;
-        if (depsReady) {
+        const sttReady = !!data.stt_ready;
+        document.getElementById("wake-start").disabled = !(depsReady && sttReady);
+        if (depsReady && sttReady) {
           wakeWarn.style.display = "none";
         } else {
           const missing = Object.entries(data.deps || {})
             .filter(([, ok]) => !ok)
             .map(([name]) => name);
-          wakeWarn.textContent = missing.length
-            ? `Wake-word packages missing: ${missing.join(", ")}. Browser mic + text box still work. Run: pip install -e '.[voice]' && pip install onnxruntime`
-            : "Wake-word packages are not installed. Browser mic + text box still work.";
+          let tip = "Browser mic + text box still work.";
+          if (missing.includes("faster_whisper")) {
+            tip = "For wake-word STT on Mac: brew install ffmpeg && pip install -e '.[voice-stt]' (or use Python 3.12). " + tip;
+          } else if (missing.length) {
+            tip = `Missing: ${missing.join(", ")}. Run pip install -e '.[voice]'. ` + tip;
+          }
+          wakeWarn.textContent = tip;
           wakeWarn.style.display = "block";
         }
         const micHint = SpeechRecognition
           ? "browser mic ready — click Start listening"
           : "browser speech API missing (use Chrome/Edge, or type below)";
-        const wake = depsReady
+        const wake = (depsReady && sttReady)
           ? (data.active ? "wake-word listening" : "wake-word available")
-          : "wake-word optional (not installed)";
+          : "wake-word needs setup (browser/text still work)";
         setStatus(`Server OK · ${micHint} · ${wake}`, "ok");
       } catch (e) {
         setStatus("Cannot reach /voice/status — is uvicorn running on port 8000?", "error");

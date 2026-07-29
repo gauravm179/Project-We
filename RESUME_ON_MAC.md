@@ -51,7 +51,7 @@ Check: http://127.0.0.1:8000/health → `"provider": "ollama"`, `"reachable": tr
 
 ## Enable Voice Bot on this Mac
 
-### Quick mode (browser mic — recommended first)
+### Quick mode (browser mic — works on Python 3.14, no ffmpeg)
 
 ```bash
 cd ~/Project-We/backend
@@ -62,26 +62,38 @@ uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
 Open: http://127.0.0.1:8000/ui/voice.html  
-1. Check **I share microphone / voice**  
-2. Click **Start listening** and allow mic access in the browser  
-3. Speak a command — the bot replies (and can speak aloud)
+Use **Start listening** or type a question. Do not need wake-word packages.
 
-### Wake-word mode (always listening: “hey jarvis”)
+### Wake-word mode (optional)
 
+Python **3.14** often fails installing `faster-whisper` (`av` / ffmpeg). Prefer one of:
+
+**Option A — install ffmpeg, then STT:**
 ```bash
+brew install ffmpeg
+cd ~/Project-We/backend && source .venv/bin/activate
+git pull origin main
+pip install -e '.[voice]'
+pip install -e '.[voice-stt]'
+```
+
+**Option B — use Python 3.12 (recommended for wake-word):**
+```bash
+brew install python@3.12
 cd ~/Project-We/backend
-source .venv/bin/activate
-pip install -e ".[voice]"
+python3.12 -m venv .venv312
+source .venv312/bin/activate
+pip install -e '.[dev,voice,voice-stt]'
+```
+
+Then:
+```bash
 export PROJECT_WE_VOICE_ENABLED=true
 export PROJECT_WE_VOICE_WAKE_WORD="hey jarvis"
 uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
-Then either:
-- Click **Start wake-word** on http://127.0.0.1:8000/ui/voice.html  
-- Or call `POST /voice/start`
-
-macOS: System Settings → Privacy & Security → Microphone → allow Terminal / your browser.
+Allow Microphone for Terminal in macOS Privacy settings.
 
 ## What was built
 

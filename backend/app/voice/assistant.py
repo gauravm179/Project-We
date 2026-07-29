@@ -39,19 +39,32 @@ class VoiceAssistant:
         self._overrides: dict[str, str | float] = {}
 
     def _check_deps_ready(self) -> bool:
+        """Wake-word mic stack ready (STT may still be missing)."""
         try:
             import numpy  # noqa: F401
             import sounddevice  # noqa: F401
             import openwakeword  # noqa: F401
-            import faster_whisper  # noqa: F401
             import onnxruntime  # noqa: F401
+        except ImportError:
+            return False
+        return True
+
+    def _check_stt_ready(self) -> bool:
+        try:
+            import faster_whisper  # noqa: F401
         except ImportError:
             return False
         return True
 
     def deps_report(self) -> dict[str, bool]:
         report: dict[str, bool] = {}
-        for name in ("numpy", "sounddevice", "openwakeword", "faster_whisper", "onnxruntime"):
+        for name in (
+            "numpy",
+            "sounddevice",
+            "openwakeword",
+            "onnxruntime",
+            "faster_whisper",
+        ):
             try:
                 __import__(name)
                 report[name] = True
@@ -62,6 +75,7 @@ class VoiceAssistant:
     def status(self) -> dict:
         data = asdict(self._status)
         data["deps_ready"] = self._check_deps_ready()
+        data["stt_ready"] = self._check_stt_ready()
         data["deps"] = self.deps_report()
         return data
 
@@ -69,11 +83,19 @@ class VoiceAssistant:
         if self._task and not self._task.done():
             return
         if not self._check_deps_ready():
-            # Do not sticky-set last_error — browser mic / text Q&A still work.
             self._status.active = False
             raise RuntimeError(
-                "Wake-word mode needs packages. Run: pip install -e '.[voice]'. "
-                "Meanwhile use browser 'Start listening' or type a question on /ui/voice.html."
+                "Wake-word mic packages missing. Run: pip install -e '.[voice]'. "
+                "Or use browser 'Start listening' / type a question on /ui/voice.html."
+            )
+        if not self._check_stt_ready():
+            self._status.active = False
+            raise RuntimeError(
+                "Speech-to-text (faster-whisper) is missing. On Mac with Python 3.14:\n"
+                "  1) brew install ffmpeg\n"
+                "  2) pip install -e '.[voice-stt]'\n"
+                "Or use Python 3.12: brew install python@3.12 && python3.12 -m venv .venv\n"
+                "Meanwhile use browser 'Start listening' or type a question."
             )
 
         self._stop_event.clear()
