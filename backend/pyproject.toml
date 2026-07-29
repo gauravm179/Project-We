@@ -22,23 +22,26 @@ dev = [
     "pytest>=8.2.0",
     "ruff>=0.5.0",
 ]
-# Core mic packages. onnxruntime / faster-whisper often lack Python 3.14 wheels —
-# install them separately when your Python version supports them (3.11–3.12 best).
+# Browser/text voice needs no extras. These are optional hardware helpers.
+# openwakeword → onnxruntime has no Python 3.14 wheels yet (use 3.11/3.12).
 voice = [
-    "openwakeword>=0.6.0",
     "sounddevice>=0.4.6",
     "soundfile>=0.12.1",
     "numpy>=1.24.0",
 ]
-voice-stt = [
+voice-wake = [
     "project-we-backend[voice]",
+    "openwakeword>=0.6.0",
+    "onnxruntime>=1.10.0,<2",
+]
+voice-stt = [
     "faster-whisper>=1.0.0",
 ]
 voice-onnx = [
     "onnxruntime>=1.10.0,<2",
 ]
 voice-full = [
-    "project-we-backend[voice,voice-stt,voice-onnx]",
+    "project-we-backend[voice,voice-wake,voice-stt]",
 ]
 
 [tool.pytest.ini_options]

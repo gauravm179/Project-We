@@ -84,11 +84,11 @@ cd ~/Project-We/backend
 python3.12 -m venv .venv312
 source .venv312/bin/activate
 pip install -U pip
-pip install -e '.[dev,voice,voice-stt,voice-onnx]'
+pip install -e '.[dev,voice,voice-wake,voice-stt]'
 ```
 
-Note: Python **3.14** often cannot install `onnxruntime` or `faster-whisper` wheels yet.
-Browser mic + typed questions still work on 3.14 with the base app.
+Note: Python **3.14** cannot install `onnxruntime` / `openwakeword` yet.
+On 3.14 just run the app — browser mic + typed questions work with **no** `[voice]` extras.
 
 Then:
 ```bash
