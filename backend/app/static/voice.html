@@ -179,8 +179,20 @@
 
     async function refreshWakeStatus() {
       try {
+        const health = await fetch("/health");
+        if (!health.ok) {
+          setStatus(`Server reachable but /health returned ${health.status}`, "error");
+          return;
+        }
         const res = await fetch("/voice/status");
-        if (!res.ok) throw new Error("status failed");
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          setStatus(
+            `/voice/status failed (${res.status}): ${body.detail || "check Terminal for uvicorn errors"}`,
+            "error"
+          );
+          return;
+        }
         const data = await res.json();
         depsReady = !!data.deps_ready;
         const sttReady = !!data.stt_ready;
@@ -192,10 +204,12 @@
             .filter(([, ok]) => !ok)
             .map(([name]) => name);
           let tip = "Browser mic + text box still work.";
-          if (missing.includes("faster_whisper")) {
-            tip = "For wake-word STT on Mac: brew install ffmpeg && pip install -e '.[voice-stt]' (or use Python 3.12). " + tip;
+          if (missing.includes("onnxruntime") || missing.includes("openwakeword")) {
+            tip = "Wake-word needs Python 3.12 + pip install -e '.[voice-wake,voice-stt]'. " + tip;
+          } else if (missing.includes("faster_whisper")) {
+            tip = "For wake-word STT: brew install ffmpeg && pip install -e '.[voice-stt]' (prefer Python 3.12). " + tip;
           } else if (missing.length) {
-            tip = `Missing: ${missing.join(", ")}. Run pip install -e '.[voice]'. ` + tip;
+            tip = `Missing optional packages: ${missing.join(", ")}. ` + tip;
           }
           wakeWarn.textContent = tip;
           wakeWarn.style.display = "block";
@@ -208,7 +222,10 @@
           : "wake-word needs setup (browser/text still work)";
         setStatus(`Server OK · ${micHint} · ${wake}`, "ok");
       } catch (e) {
-        setStatus("Cannot reach /voice/status — is uvicorn running on port 8000?", "error");
+        setStatus(
+          "Cannot reach API. In Terminal run uvicorn, then open http://127.0.0.1:8000/ui/voice.html (not a file:// page).",
+          "error"
+        );
       }
     }
 
