@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Project We</title>
+  <style>
+    :root {
+      --bg: #e8eef7;
+      --panel: #ffffff;
+      --text: #152033;
+      --muted: #4d5d77;
+      --accent: #1f6feb;
+      --line: #c9d4e5;
+      --voice: #0f766e;
+      --code: #1d4ed8;
+      --web: #b45309;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Avenir Next", "Segoe UI", ui-sans-serif, system-ui, sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at 10% 0%, #d7e7ff 0%, transparent 42%),
+        radial-gradient(circle at 90% 10%, #d9f3ea 0%, transparent 36%),
+        linear-gradient(180deg, #f4f7fc 0%, var(--bg) 100%);
+    }
+    .wrap { max-width: 920px; margin: 0 auto; padding: 40px 20px 64px; }
+    h1 { margin: 0; font-size: clamp(2rem, 5vw, 3rem); letter-spacing: -0.03em; }
+    .lead { margin: 10px 0 28px; color: var(--muted); font-size: 1.05rem; max-width: 40rem; }
+    .grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+    a.card {
+      display: block; text-decoration: none; color: inherit;
+      background: var(--panel); border: 1px solid var(--line); border-radius: 18px;
+      padding: 22px; box-shadow: 0 10px 30px rgba(21, 32, 51, 0.06);
+      transition: transform 0.15s ease, border-color 0.15s ease;
+    }
+    a.card:hover { transform: translateY(-2px); border-color: var(--accent); }
+    .tag {
+      display: inline-block; font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em;
+      text-transform: uppercase; margin-bottom: 10px;
+    }
+    .tag.voice { color: var(--voice); }
+    .tag.code { color: var(--code); }
+    .tag.web { color: var(--web); }
+    .tag.notes { color: var(--accent); }
+    h2 { margin: 0 0 8px; font-size: 1.25rem; }
+    p { margin: 0; color: var(--muted); line-height: 1.45; }
+    .status {
+      margin-top: 28px; padding: 16px 18px; border-radius: 14px;
+      background: #fff; border: 1px solid var(--line); color: var(--muted);
+      font-size: 0.95rem;
+    }
+    .status.ok { border-color: #86efac; background: #f0fdf4; color: #166534; }
+    .status.err { border-color: #fca5a5; background: #fef2f2; color: #991b1b; }
+    code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.9em; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Project We</h1>
+    <p class="lead">Local assistant hub. Pick a bot below. Voice commands are routed by the master bot to coding or web-learner when needed.</p>
+
+    <div class="grid">
+      <a class="card" href="/ui/voice.html">
+        <div class="tag voice">Voice</div>
+        <h2>Voice Bot</h2>
+        <p>Speak commands with your Mac microphone. Master bot routes to other specialists.</p>
+      </a>
+      <a class="card" href="/ui/">
+        <div class="tag code">Coding</div>
+        <h2>Coding Bot</h2>
+        <p>Code, maths, debugging, tests, and logic help.</p>
+      </a>
+      <a class="card" href="/ui/web-learner.html">
+        <div class="tag web">Web</div>
+        <h2>Web Learner</h2>
+        <p>Search the web, capture pages, store compressed learning.</p>
+      </a>
+      <a class="card" href="/ui/notes.html">
+        <div class="tag notes">Notes</div>
+        <h2>Agent Notes</h2>
+        <p>Permanent setup notes that stay outside chat.</p>
+      </a>
+    </div>
+
+    <div id="status" class="status">Checking local server…</div>
+  </div>
+  <script>
+    async function check() {
+      const el = document.getElementById("status");
+      try {
+        const res = await fetch("/health");
+        const data = await res.json();
+        const ai = data.ai || {};
+        el.className = "status ok";
+        el.textContent = `Server running · AI: ${ai.provider || "?"}${ai.model_configured || ai.model ? " / " + (ai.model_configured || ai.model) : ""} · open Voice Bot to speak commands`;
+      } catch (e) {
+        el.className = "status err";
+        el.innerHTML = "Cannot reach the API. On your Mac run:<br><code>cd ~/Project-We/backend && source .venv/bin/activate && uvicorn app.main:app --reload --host 127.0.0.1 --port 8000</code>";
+      }
+    }
+    check();
+  </script>
+</body>
+</html>

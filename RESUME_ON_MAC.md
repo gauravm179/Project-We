@@ -1,7 +1,10 @@
 # Resume work on your Mac
 
-All work is saved on GitHub branch: `cursor/coding-bot-training-c355`  
-PR: https://github.com/gauravm179/Project-We/pull/4
+All work is saved on GitHub:
+
+- `main` (merged) — use this for a fresh clone
+- `feature/v0.2-memory` (merged)
+- Branch `cursor/coding-bot-training-c355` / PR #4 (merged into feature base)
 
 ## First time on this Mac (if not cloned yet)
 
@@ -9,16 +12,16 @@ PR: https://github.com/gauravm179/Project-We/pull/4
 cd ~
 git clone https://github.com/gauravm179/Project-We.git
 cd Project-We
-git checkout cursor/coding-bot-training-c355
-git pull origin cursor/coding-bot-training-c355
+git checkout main
+git pull origin main
 ```
 
 ## Every time you come back
 
 ```bash
 cd ~/Project-We
-git checkout cursor/coding-bot-training-c355
-git pull origin cursor/coding-bot-training-c355
+git checkout main
+git pull origin main
 cd backend
 python3 -m venv .venv
 source .venv/bin/activate

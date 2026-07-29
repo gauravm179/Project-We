@@ -76,3 +76,11 @@ def test_voice_ui_served(client: TestClient):
     response = client.get("/ui/voice.html")
     assert response.status_code == 200
     assert b"Voice Bot" in response.content
+    assert b"Start listening" in response.content
+
+
+def test_home_ui_served(client: TestClient):
+    response = client.get("/ui/home.html")
+    assert response.status_code == 200
+    assert b"Voice Bot" in response.content
+    assert b"/ui/voice.html" in response.content
