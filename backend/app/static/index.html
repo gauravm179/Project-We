@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Project We — Code Assistant</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0f1117;
+      --panel: #171b26;
+      --panel-2: #1f2433;
+      --border: #2c3347;
+      --text: #e8ecf5;
+      --muted: #9aa6bf;
+      --accent: #5b8cff;
+      --accent-2: #3ddc97;
+      --user: #24304d;
+      --assistant: #1a2335;
+      --danger: #ff6b6b;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, sans-serif;
+      background: radial-gradient(circle at top, #1a2140 0%, var(--bg) 45%);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    .layout {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 24px;
+      display: grid;
+      gap: 20px;
+      grid-template-columns: 320px 1fr;
+    }
+
+    .panel {
+      background: rgba(23, 27, 38, 0.92);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 18px;
+      backdrop-filter: blur(8px);
+    }
+
+    h1 {
+      margin: 0 0 6px;
+      font-size: 1.35rem;
+    }
+
+    .subtitle {
+      color: var(--muted);
+      font-size: 0.92rem;
+      margin-bottom: 16px;
+    }
+
+    .section-title {
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      margin: 18px 0 10px;
+    }
+
+    .chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .chip {
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 999px;
+      padding: 6px 10px;
+      font-size: 0.78rem;
+    }
+
+    .list {
+      margin: 0;
+      padding-left: 18px;
+      color: var(--muted);
+      font-size: 0.86rem;
+      line-height: 1.5;
+    }
+
+    .chat-panel {
+      display: flex;
+      flex-direction: column;
+      min-height: 78vh;
+    }
+
+    .messages {
+      flex: 1;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      padding-right: 4px;
+      margin-bottom: 16px;
+    }
+
+    .message {
+      border-radius: 14px;
+      padding: 12px 14px;
+      line-height: 1.55;
+      white-space: pre-wrap;
+      word-break: break-word;
+      border: 1px solid var(--border);
+    }
+
+    .message.user {
+      background: var(--user);
+      align-self: flex-end;
+      max-width: 85%;
+    }
+
+    .message.assistant {
+      background: var(--assistant);
+      align-self: flex-start;
+      max-width: 92%;
+    }
+
+    .message .role {
+      display: block;
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+
+    .composer {
+      display: grid;
+      gap: 10px;
+    }
+
+    textarea {
+      width: 100%;
+      min-height: 110px;
+      resize: vertical;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: var(--panel-2);
+      color: var(--text);
+      padding: 12px 14px;
+      font: inherit;
+    }
+
+    .actions {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+    }
+
+    button {
+      border: none;
+      border-radius: 10px;
+      padding: 10px 16px;
+      font: inherit;
+      cursor: pointer;
+      background: linear-gradient(135deg, var(--accent), #7aa2ff);
+      color: white;
+      font-weight: 600;
+    }
+
+    button.secondary {
+      background: var(--panel-2);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+
+    button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    .status {
+      color: var(--muted);
+      font-size: 0.85rem;
+    }
+
+    .status.error { color: var(--danger); }
+    .status.ok { color: var(--accent-2); }
+
+    .empty {
+      color: var(--muted);
+      font-size: 0.95rem;
+      padding: 24px 8px;
+    }
+
+    @media (max-width: 900px) {
+      .layout { grid-template-columns: 1fr; }
+      .chat-panel { min-height: 60vh; }
+    }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <aside class="panel">
+      <h1>Code Assistant</h1>
+      <p class="subtitle">Specialist bot under Project We master assistant. Local browser UI.</p>
+      <p id="provider-status" class="subtitle">AI provider: loading…</p>
+
+      <div>
+        <a href="/ui/notes.html" style="color:#5b8cff;text-decoration:none;font-size:0.9rem;">Agent Notes</a>
+        &nbsp;·&nbsp;
+        <a href="/ui/web-learner.html" style="color:#5b8cff;text-decoration:none;font-size:0.9rem;">Web Learner</a>
+        &nbsp;·&nbsp;
+        <a href="/ui/voice.html" style="color:#5b8cff;text-decoration:none;font-size:0.9rem;">Voice Bot</a>
+      </div>
+      <div class="section-title">Supported languages</div>
+      <div id="languages" class="chips"></div>
+
+      <div class="section-title">Logic skills</div>
+      <ul id="logic-list" class="list"></ul>
+
+      <div class="section-title">Build skills</div>
+      <ul id="build-list" class="list"></ul>
+
+      <div class="section-title">Trained skills</div>
+      <div id="trained-skills" class="chips"></div>
+
+      <div class="section-title">Learn from a mistake</div>
+      <form id="feedback-form" class="composer">
+        <textarea id="mistake-input" placeholder="What did the bot get wrong?" required style="min-height:70px"></textarea>
+        <textarea id="correction-input" placeholder="What is the correct approach?" required style="min-height:70px"></textarea>
+        <button type="submit" class="secondary" id="teach-btn">Teach coding-bot</button>
+      </form>
+      <div class="section-title">Lessons learned</div>
+      <ul id="lessons-list" class="list"></ul>
+    </aside>
+
+    <main class="panel chat-panel">
+      <div id="messages" class="messages">
+        <div class="empty">Ask for code, logic help, debugging, tests, or a full feature build.</div>
+      </div>
+
+      <form id="chat-form" class="composer">
+        <textarea
+          id="message-input"
+          placeholder="Example: Build a Python function that checks if a binary tree is balanced. Explain the logic."
+          required
+        ></textarea>
+        <div class="actions">
+          <span id="status" class="status">Loading bot capabilities…</span>
+          <div>
+            <button type="button" class="secondary" id="clear-btn">Clear</button>
+            <button type="submit" id="send-btn">Send to coding-bot</button>
+          </div>
+        </div>
+      </form>
+    </main>
+  </div>
+
+  <script>
+    const messagesEl = document.getElementById("messages");
+    const languagesEl = document.getElementById("languages");
+    const logicListEl = document.getElementById("logic-list");
+    const buildListEl = document.getElementById("build-list");
+    const trainedSkillsEl = document.getElementById("trained-skills");
+    const lessonsListEl = document.getElementById("lessons-list");
+    const statusEl = document.getElementById("status");
+    const formEl = document.getElementById("chat-form");
+    const feedbackFormEl = document.getElementById("feedback-form");
+    const mistakeInput = document.getElementById("mistake-input");
+    const correctionInput = document.getElementById("correction-input");
+    const inputEl = document.getElementById("message-input");
+    const sendBtn = document.getElementById("send-btn");
+    const clearBtn = document.getElementById("clear-btn");
+    let pendingPermissionId = null;
+
+    function setStatus(text, kind = "") {
+      statusEl.textContent = text;
+      statusEl.className = `status ${kind}`.trim();
+    }
+
+    function renderList(target, items) {
+      target.innerHTML = items.map((item) => `<li>${item}</li>`).join("");
+    }
+
+    function appendMessage(role, content) {
+      if (messagesEl.querySelector(".empty")) {
+        messagesEl.innerHTML = "";
+      }
+      const node = document.createElement("div");
+      node.className = `message ${role}`;
+      node.innerHTML = `<span class="role">${role}</span>${escapeHtml(content)}`;
+      messagesEl.appendChild(node);
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+    }
+
+    function escapeHtml(text) {
+      return text
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;");
+    }
+
+    async function loadLessons() {
+      const response = await fetch("/specialists/coding-bot/lessons?limit=10");
+      if (!response.ok) return;
+      const lessons = await response.json();
+      if (!lessons.length) {
+        lessonsListEl.innerHTML = "<li>No mistake lessons yet.</li>";
+        return;
+      }
+      lessonsListEl.innerHTML = lessons
+        .map((lesson) => `<li><strong>Wrong:</strong> ${escapeHtml(lesson.mistake)}<br><strong>Fix:</strong> ${escapeHtml(lesson.correction)}</li>`)
+        .join("");
+    }
+
+    async function approveInternet(permissionId) {
+      const response = await fetch(`/permissions/${permissionId}/decision`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ approve: true }),
+      });
+      if (!response.ok) throw new Error("Could not approve internet access");
+      pendingPermissionId = null;
+      setStatus("Internet approved. Ask again to use live guidelines.", "ok");
+    }
+
+    async function loadCapabilities() {
+      const root = await fetch("/health");
+      if (root.ok) {
+        const info = await root.json();
+        const ai = info.ai || {};
+        const providerStatus = document.getElementById("provider-status");
+        if (providerStatus) {
+          if (ai.provider === "ollama") {
+            const reach = ai.reachable ? "online" : "offline";
+            const avail = ai.model_available ? "model ready" : "model missing — run ollama pull";
+            providerStatus.textContent = `AI: Ollama / ${ai.model_configured || ai.model} (${reach}, ${avail})`;
+          } else {
+            providerStatus.textContent = "AI: echo stub (set PROJECT_WE_PROVIDER=ollama + llama3.2 for real answers)";
+          }
+        }
+      }
+
+      const response = await fetch("/specialists/coding-bot/capabilities");
+      if (!response.ok) {
+        throw new Error("Could not load coding-bot capabilities");
+      }
+      const data = await response.json();
+
+      languagesEl.innerHTML = data.languages
+        .map((lang) => `<span class="chip" title="${lang.notes}">${lang.name}</span>`)
+        .join("");
+
+      renderList(logicListEl, data.logic_capabilities);
+      renderList(buildListEl, data.build_capabilities);
+
+      trainedSkillsEl.innerHTML = data.trained_skills
+        .map((skill) => `<span class="chip">${skill}</span>`)
+        .join("");
+
+      setStatus(`Ready · ${data.languages.length} languages · ${data.trained_skills.length} active skills`, "ok");
+    }
+
+    async function loadHistory() {
+      const response = await fetch("/specialists/coding-bot/history?limit=30");
+      if (!response.ok) return;
+      const history = await response.json();
+      if (!history.length) return;
+      messagesEl.innerHTML = "";
+      for (const item of history) {
+        appendMessage(item.role, item.content);
+      }
+    }
+
+    async function sendMessage(message) {
+      sendBtn.disabled = true;
+      setStatus("Thinking…");
+      appendMessage("user", message);
+
+      try {
+        const response = await fetch("/specialists/coding-bot/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message }),
+        });
+
+        if (!response.ok) {
+          const error = await response.json().catch(() => ({ detail: "Request failed" }));
+          throw new Error(error.detail || "Chat request failed");
+        }
+
+        const data = await response.json();
+        appendMessage("assistant", data.response);
+        if (data.requires_permission && data.permission_request_id) {
+          pendingPermissionId = data.permission_request_id;
+          appendMessage(
+            "assistant",
+            `Internet permission requested (#${data.permission_request_id}). Click "Approve internet" to allow live official docs.`
+          );
+          setStatus("Waiting for internet approval", "error");
+        } else {
+          const flags = [];
+          if (data.used_lessons) flags.push("used past lessons");
+          if (data.used_guidelines) flags.push("used guidelines");
+          setStatus(flags.length ? `Ready · ${flags.join(" · ")}` : "Ready", "ok");
+        }
+      } catch (error) {
+        setStatus(error.message || "Request failed", "error");
+      } finally {
+        sendBtn.disabled = false;
+      }
+    }
+
+    formEl.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const message = inputEl.value.trim();
+      if (!message) return;
+      inputEl.value = "";
+      await sendMessage(message);
+    });
+
+    feedbackFormEl.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const mistake = mistakeInput.value.trim();
+      const correction = correctionInput.value.trim();
+      if (!mistake || !correction) return;
+      const response = await fetch("/specialists/coding-bot/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mistake, correction }),
+      });
+      if (!response.ok) {
+        setStatus("Could not save lesson", "error");
+        return;
+      }
+      mistakeInput.value = "";
+      correctionInput.value = "";
+      await loadLessons();
+      setStatus("Lesson saved. Coding-bot will use it next time.", "ok");
+    });
+
+    clearBtn.addEventListener("click", () => {
+      messagesEl.innerHTML = '<div class="empty">Ask for code, logic help, debugging, tests, or a full feature build.</div>';
+      setStatus("Chat cleared locally. Server history is unchanged.", "ok");
+    });
+
+    // Expose approve helper for the inline prompt button text.
+    window.approvePendingInternet = async () => {
+      if (!pendingPermissionId) {
+        setStatus("No pending internet request", "error");
+        return;
+      }
+      try {
+        await approveInternet(pendingPermissionId);
+      } catch (error) {
+        setStatus(error.message, "error");
+      }
+    };
+
+    // Add approve button next to clear.
+    const approveBtn = document.createElement("button");
+    approveBtn.type = "button";
+    approveBtn.className = "secondary";
+    approveBtn.id = "approve-btn";
+    approveBtn.textContent = "Approve internet";
+    approveBtn.addEventListener("click", () => window.approvePendingInternet());
+    clearBtn.parentElement.insertBefore(approveBtn, clearBtn);
+
+    Promise.all([loadCapabilities(), loadHistory(), loadLessons()]).catch((error) => {
+      setStatus(error.message, "error");
+    });
+  </script>
+</body>
+</html>

@@ -14,18 +14,42 @@ DEFAULT_DB_PATH = DATA_DIR / "project_we.db"
 @dataclass(frozen=True)
 class Settings:
     app_name: str = "Project We"
-    app_version: str = "0.1.0"
+    app_version: str = "0.3.0"
     provider: str = "echo"
     database_url: str = f"sqlite:///{DEFAULT_DB_PATH}"
     ollama_base_url: str = "http://127.0.0.1:11434"
-    ollama_model: str = "qwen2.5:7b"
+    ollama_model: str = "llama3.2"
+    ollama_timeout_seconds: float = 120.0
+    ollama_temperature: float = 0.2
+    ollama_reasoning: bool = True
+    strict_local_mode: bool = True
+    internet_mode: str = "ask"
+    web_search_engine: str = "duckduckgo"
+    voice_enabled: bool = False
+    voice_wake_word: str = "hey jarvis"
+    voice_wake_sensitivity: float = 0.5
+    voice_stt_model: str = "base"
+    voice_tts_voice: str = "en_US-amy-medium"
+    voice_silence_threshold: float = 1.5
 
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
     return Settings(
-        provider=os.getenv("PROJECT_WE_PROVIDER", "echo"),
+        provider=os.getenv("PROJECT_WE_PROVIDER", "echo").lower(),
         database_url=os.getenv("PROJECT_WE_DATABASE_URL", f"sqlite:///{DEFAULT_DB_PATH}"),
         ollama_base_url=os.getenv("PROJECT_WE_OLLAMA_BASE_URL", "http://127.0.0.1:11434"),
-        ollama_model=os.getenv("PROJECT_WE_OLLAMA_MODEL", "qwen2.5:7b"),
+        ollama_model=os.getenv("PROJECT_WE_OLLAMA_MODEL", "llama3.2"),
+        ollama_timeout_seconds=float(os.getenv("PROJECT_WE_OLLAMA_TIMEOUT_SECONDS", "120")),
+        ollama_temperature=float(os.getenv("PROJECT_WE_OLLAMA_TEMPERATURE", "0.2")),
+        ollama_reasoning=os.getenv("PROJECT_WE_OLLAMA_REASONING", "true").lower() == "true",
+        strict_local_mode=os.getenv("PROJECT_WE_STRICT_LOCAL_MODE", "true").lower() == "true",
+        internet_mode=os.getenv("PROJECT_WE_INTERNET_MODE", "ask").lower(),
+        web_search_engine=os.getenv("PROJECT_WE_WEB_SEARCH_ENGINE", "duckduckgo").lower(),
+        voice_enabled=os.getenv("PROJECT_WE_VOICE_ENABLED", "false").lower() == "true",
+        voice_wake_word=os.getenv("PROJECT_WE_VOICE_WAKE_WORD", "hey jarvis"),
+        voice_wake_sensitivity=float(os.getenv("PROJECT_WE_VOICE_WAKE_SENSITIVITY", "0.5")),
+        voice_stt_model=os.getenv("PROJECT_WE_VOICE_STT_MODEL", "base"),
+        voice_tts_voice=os.getenv("PROJECT_WE_VOICE_TTS_VOICE", "en_US-amy-medium"),
+        voice_silence_threshold=float(os.getenv("PROJECT_WE_VOICE_SILENCE_THRESHOLD", "1.5")),
     )
