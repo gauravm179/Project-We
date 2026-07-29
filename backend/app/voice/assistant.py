@@ -92,7 +92,8 @@ class VoiceAssistant:
             raise RuntimeError(
                 "Wake-word mic packages missing"
                 + (f" ({', '.join(missing)})" if missing else "")
-                + ". On Python 3.14, onnxruntime may be unavailable — use Python 3.12 "
+                + ". On Python 3.14, onnxruntime/openwakeword are unavailable — "
+                "use Python 3.12 (`pip install -e '.[voice-wake,voice-stt]'`) "
                 "or browser 'Start listening' / type a question on /ui/voice.html."
             )
         if not self._check_stt_ready():
