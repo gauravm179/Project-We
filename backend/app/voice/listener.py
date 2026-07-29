@@ -40,7 +40,11 @@ class VoiceListener:
         try:
             from openwakeword.model import Model  # type: ignore
 
-            self._oww_model = Model()
+            # Prefer ONNX on macOS (tflite-runtime often missing on Apple Silicon).
+            try:
+                self._oww_model = Model(inference_framework="onnx")
+            except Exception:
+                self._oww_model = Model()
         except Exception:
             self._oww_model = None
 

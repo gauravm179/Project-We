@@ -21,6 +21,7 @@ class VoiceStatusResponse(BaseModel):
     last_reply: str = ""
     last_error: str | None = None
     deps_ready: bool = False
+    deps: dict[str, bool] = Field(default_factory=dict)
 
 
 class VoiceCommandRequest(BaseModel):
