@@ -12,8 +12,8 @@ router = APIRouter()
 
 @router.get("/")
 def root_redirect() -> RedirectResponse:
-    """Send browsers to the coding-bot chat UI instead of raw JSON."""
-    return RedirectResponse(url="/ui/", status_code=307)
+    """Send browsers to the Project We hub (not raw JSON)."""
+    return RedirectResponse(url="/ui/home.html", status_code=307)
 
 
 @router.get("/health")
@@ -37,7 +37,9 @@ async def health() -> dict[str, object]:
         "status": "running",
         "sos_non_removable": True,
         "ai": provider_info,
+        "home_ui": "/ui/home.html",
         "chat_ui": "/ui/",
+        "voice_ui": "/ui/voice.html",
         "web_learner_ui": "/ui/web-learner.html",
         "notes_ui": "/ui/notes.html",
     }
