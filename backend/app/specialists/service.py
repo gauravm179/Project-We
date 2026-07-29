@@ -124,11 +124,7 @@ class SpecialistService:
         skip_web_assist_early = slug == "coding-bot" and (needs_guidelines or wants_live_docs)
 
         web_assist: WebAssistResult | dict[str, object] | None = None
-        if (
-            slug != "web-learner-bot"
-            and message_needs_web_assist(user_message)
-            and not skip_web_assist_early
-        ):
+        if message_needs_web_assist(user_message) and not skip_web_assist_early:
             web_assist = await self._web_learning.assist_for_message(
                 db,
                 user_message,
@@ -213,21 +209,6 @@ class SpecialistService:
                 if memory_context
                 else f"--- WEB LEARNER ASSIST ---\n{web_assist.context}"
             )
-        elif (
-            slug != "web-learner-bot"
-            and message_needs_web_assist(user_message)
-            and not skip_web_assist_early
-            and web_assist is None
-        ):
-            web_assist = await self._web_learning.assist_for_message(
-                db, user_message, requesting_bot=slug
-            )
-            if isinstance(web_assist, WebAssistResult) and web_assist.context:
-                memory_context = (
-                    f"{memory_context}\n\n--- WEB LEARNER ASSIST ---\n{web_assist.context}"
-                    if memory_context
-                    else f"--- WEB LEARNER ASSIST ---\n{web_assist.context}"
-                )
 
         lesson_context = self._learning.build_lesson_context(db, specialist_id=row.id)
         used_lessons = bool(lesson_context)

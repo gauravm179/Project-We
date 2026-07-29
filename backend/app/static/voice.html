@@ -162,8 +162,11 @@
         return;
       }
       append("assistant", data.reply || "(no reply)");
+      if (data.routed_to && data.routed_to !== "master") {
+        append("system", `Routed to ${data.routed_to}` + (data.route_reason ? ` (${data.route_reason})` : ""));
+      }
       speak(data.reply || "");
-      setStatus("Ready", "ok");
+      setStatus(data.routed_to ? `Ready · via ${data.routed_to}` : "Ready", "ok");
     }
 
     function startBrowserListening() {

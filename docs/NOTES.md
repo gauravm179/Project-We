@@ -85,8 +85,12 @@ Master Bot (Project We)     POST /chat
 
 ### Master bot
 
-- Entry point: `POST /chat`
-- Handles general assistant tasks
+- Entry points: `POST /chat` and voice `POST /voice/command`
+- **Auto-routes** to specialists:
+  - coding / debug / tests → `coding-bot`
+  - web search / URLs → `web-learner-bot`
+  - “ask coding bot …” / “tell web learner …” → explicit specialist
+  - otherwise → master
 - Uses shared memory (facts, preferences, tasks)
 - Can gate internet access via permission requests
 
@@ -233,13 +237,12 @@ Notes are **served live** from `docs/NOTES.md` by the backend — they do not di
 | Base branch | `feature/v0.2-memory` |
 | Feature branch | `cursor/coding-bot-training-c355` |
 | PR | #4 — bootstrap trained coding-bot |
-| Tests | 72+ passing |
+| Tests | 79 passing |
 
 ---
 
 ## 7. What's not built yet
 
-- Specialist auto-routing (master bot picking the right sub-bot automatically)
 - Skill auto-suggestion from conversation
 - Document/codebase ingestion for coding bot context
 - Desktop UI (Tauri + React) — API only for now

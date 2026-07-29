@@ -6,13 +6,15 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.brain.providers import build_provider
+from app.brain.router import route_message
 from app.core.config import get_settings
 from app.db.models import ChatMessage
 from app.memory.service import MemoryService
 from app.policy.service import PolicyService
 from app.schemas.chat import ChatHistoryItem, ChatReply
+from app.specialists.service import SpecialistService
 from app.web_learning.intent import message_needs_web_assist
-from app.web_learning.service import WebLearningService, WebAssistResult
+from app.web_learning.service import WebAssistResult, WebLearningService
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +24,7 @@ class BrainService:
         self._memory_service = MemoryService()
         self._policy_service = PolicyService()
         self._web_learning = WebLearningService()
+        self._specialists = SpecialistService()
 
     async def chat(self, db: Session, user_message: str) -> ChatReply:
         settings = get_settings()
@@ -31,6 +34,12 @@ class BrainService:
         db.flush()
 
         self._memory_service.extract_and_store(db=db, message=user_message)
+
+        decision = route_message(user_message)
+        if decision.target != "master":
+            return await self._delegate_to_specialist(
+                db, user_message=user_message, slug=decision.target, reason=decision.reason
+            )
 
         needs_internet = self._policy_service.message_likely_needs_internet(user_message)
         if settings.strict_local_mode and needs_internet and settings.internet_mode in {"ask", "never"}:
@@ -46,6 +55,8 @@ class BrainService:
                     response=assistant_text,
                     requires_permission=False,
                     required_capability="internet",
+                    routed_to="master",
+                    route_reason=decision.reason,
                 )
 
             request = self._policy_service.create_permission_request(
@@ -65,6 +76,8 @@ class BrainService:
                 requires_permission=True,
                 required_capability="internet",
                 permission_request_id=request.id,
+                routed_to="master",
+                route_reason=decision.reason,
             )
 
         provider = build_provider(settings)
@@ -85,6 +98,8 @@ class BrainService:
                     requires_permission=True,
                     required_capability="internet",
                     permission_request_id=int(assist.permission_request_id),  # type: ignore[arg-type]
+                    routed_to="master",
+                    route_reason=decision.reason,
                 )
             if isinstance(assist, dict) and assist.get("requires_permission"):
                 assistant_text = str(assist.get("message", "Internet permission required."))
@@ -95,6 +110,8 @@ class BrainService:
                     requires_permission=True,
                     required_capability="internet",
                     permission_request_id=int(assist["permission_request_id"]),  # type: ignore[arg-type]
+                    routed_to="master",
+                    route_reason=decision.reason,
                 )
             if isinstance(assist, WebAssistResult) and assist.context:
                 memory_context = (
@@ -109,7 +126,50 @@ class BrainService:
         db.add(assistant_record)
         db.commit()
 
-        return ChatReply(response=assistant_text)
+        return ChatReply(
+            response=assistant_text,
+            routed_to="master",
+            route_reason=decision.reason,
+        )
+
+    async def _delegate_to_specialist(
+        self,
+        db: Session,
+        *,
+        user_message: str,
+        slug: str,
+        reason: str,
+    ) -> ChatReply:
+        logger.info("Master routing to %s (%s)", slug, reason)
+        specialist_reply = await self._specialists.chat(db, slug, user_message)
+        if specialist_reply is None:
+            fallback = (
+                f"I wanted to use {slug}, but that specialist is unavailable. "
+                "Answering as the master bot instead."
+            )
+            db.add(ChatMessage(role="assistant", content=fallback))
+            db.commit()
+            return ChatReply(
+                response=fallback,
+                routed_to="master",
+                route_reason=f"fallback from missing {slug}",
+            )
+
+        prefix = f"[via {specialist_reply.specialist_name}] "
+        response = specialist_reply.response
+        if not response.startswith("["):
+            response = prefix + response
+
+        db.add(ChatMessage(role="assistant", content=response))
+        db.commit()
+        return ChatReply(
+            response=response,
+            requires_permission=specialist_reply.requires_permission,
+            required_capability=specialist_reply.required_capability,
+            permission_request_id=specialist_reply.permission_request_id,
+            routed_to=specialist_reply.specialist_slug,
+            route_reason=reason,
+        )
 
     def history(self, db: Session, limit: int = 50) -> list[ChatHistoryItem]:
         stmt = select(ChatMessage).order_by(ChatMessage.id.desc()).limit(limit)

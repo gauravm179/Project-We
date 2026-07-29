@@ -34,3 +34,5 @@ class VoiceCommandResponse(BaseModel):
     reply: str
     requires_permission: bool = False
     permission_request_id: int | None = None
+    routed_to: str = "master"
+    route_reason: str | None = None

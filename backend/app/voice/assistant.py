@@ -141,6 +141,8 @@ class VoiceAssistant:
             "reply": response,
             "requires_permission": reply.requires_permission,
             "permission_request_id": reply.permission_request_id,
+            "routed_to": reply.routed_to,
+            "route_reason": reply.route_reason,
         }
 
     async def _run_loop(self, settings: Settings) -> None:

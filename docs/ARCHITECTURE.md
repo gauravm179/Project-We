@@ -99,7 +99,6 @@ Skill "log-diagnosis" (category: troubleshooting)
 ## Next milestones
 
 - Document ingestion + semantic retrieval
-- Voice I/O module
 - Desktop client (Tauri + React)
-- Specialist auto-routing (main chat routes to relevant specialist)
+- Stronger specialist auto-routing via LLM classify (rule-based routing ships now)
 - Skill auto-suggestion from conversation context
