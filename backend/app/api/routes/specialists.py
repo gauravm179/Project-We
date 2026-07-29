@@ -17,13 +17,17 @@ from app.schemas.specialist import (
     SpecialistRecord,
     SpecialistUpdate,
 )
+from app.schemas.web_learning import WebCaptureDetail, WebCaptureRecord, WebCaptureRequest, WebCaptureResponse
 from app.skills.service import SkillService
 from app.specialists.service import SpecialistService
+from app.web_learning.service import WebLearningService
 
 router = APIRouter(prefix="/specialists", tags=["specialists"])
 _service = SpecialistService()
 _skill_service = SkillService()
 _learning_service = LearningService()
+_web_learning_service = WebLearningService()
+WEB_LEARNER_SLUG = "web-learner-bot"
 
 
 @router.post("", response_model=SpecialistRecord, status_code=201)
@@ -57,6 +61,53 @@ def coding_bot_capabilities(db: Session = Depends(get_db)):
         build_capabilities=list(BUILD_CAPABILITIES),
         trained_skills=trained,
         browser_ui="/ui/",
+    )
+
+
+@router.get("/web-learner-bot/captures", response_model=list[WebCaptureRecord])
+def list_web_captures(db: Session = Depends(get_db), limit: int = 50):
+    if _service.get_by_slug(db, WEB_LEARNER_SLUG) is None:
+        raise HTTPException(status_code=404, detail="Web learner bot not found")
+    return _web_learning_service.list_captures(db, WEB_LEARNER_SLUG, limit=limit)
+
+
+@router.get("/web-learner-bot/captures/{capture_id}", response_model=WebCaptureDetail)
+def get_web_capture(capture_id: int, db: Session = Depends(get_db)):
+    record = _web_learning_service.get_capture(db, WEB_LEARNER_SLUG, capture_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="Capture not found")
+    return record
+
+
+@router.post("/web-learner-bot/capture")
+async def capture_web_page(payload: WebCaptureRequest, db: Session = Depends(get_db)):
+    if _service.get_by_slug(db, WEB_LEARNER_SLUG) is None:
+        raise HTTPException(status_code=404, detail="Web learner bot not found")
+
+    result = await _web_learning_service.capture_url(
+        db,
+        WEB_LEARNER_SLUG,
+        str(payload.url),
+        max_images=payload.max_images,
+    )
+    if isinstance(result, dict):
+        if result.get("requires_permission"):
+            return result
+        if result.get("error"):
+            raise HTTPException(status_code=400, detail=str(result["error"]))
+        raise HTTPException(status_code=400, detail="Capture failed")
+
+    return WebCaptureResponse(
+        capture_id=result.capture_id,
+        url=result.url,
+        title=result.title,
+        text_chars=result.text_chars,
+        image_count=result.image_count,
+        compressed_bytes=result.compressed_bytes,
+        summary=result.summary,
+        message=(
+            f"Stored compressed learning locally at data/web_learning/captures/{result.capture_id}/"
+        ),
     )
 
 

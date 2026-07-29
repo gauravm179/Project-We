@@ -11,6 +11,7 @@ from app.core.config import get_settings
 from app.db.models import Specialist, SpecialistMessage
 from app.learning.guidelines import GuidelinesService
 from app.learning.service import LearningService
+from app.web_learning.service import WebLearningService
 from app.memory.service import MemoryService
 from app.policy.service import PolicyService
 from app.schemas.specialist import (
@@ -45,6 +46,7 @@ class SpecialistService:
         self._learning = LearningService()
         self._guidelines = GuidelinesService()
         self._policy = PolicyService()
+        self._web_learning = WebLearningService()
 
     def create(self, db: Session, payload: SpecialistCreate) -> SpecialistRecord | None:
         row = Specialist(
@@ -195,6 +197,11 @@ class SpecialistService:
                 "\n\nAlways prefer the LESSONS FROM PAST MISTAKES corrections over repeating "
                 "the same wrong advice."
             )
+
+        if slug == "web-learner-bot":
+            stored = self._web_learning.build_learning_context(db, specialist_id=row.id)
+            if stored:
+                full_prompt += "\n\n--- STORED WEB LEARNING ---\n" + stored
 
         assistant_text = await provider.generate(
             user_message,

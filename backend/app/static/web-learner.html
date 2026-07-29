@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Project We — Web Learner</title>
+  <style>
+    :root { color-scheme: dark; --bg:#0f1117; --panel:#171b26; --border:#2c3347; --text:#e8ecf5; --muted:#9aa6bf; --accent:#5b8cff; --accent2:#3ddc97; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family:Inter,system-ui,sans-serif; background:var(--bg); color:var(--text); }
+    .wrap { max-width:1100px; margin:0 auto; padding:24px; display:grid; gap:20px; grid-template-columns:340px 1fr; }
+    .panel { background:var(--panel); border:1px solid var(--border); border-radius:16px; padding:18px; }
+    h1 { margin:0 0 8px; font-size:1.35rem; }
+    .muted { color:var(--muted); font-size:0.9rem; }
+    .section { font-size:0.75rem; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); margin:16px 0 8px; }
+    input, textarea, button { font:inherit; }
+    input, textarea { width:100%; border-radius:10px; border:1px solid var(--border); background:#1f2433; color:var(--text); padding:10px 12px; }
+    button { border:none; border-radius:10px; padding:10px 14px; background:linear-gradient(135deg,var(--accent),#7aa2ff); color:#fff; font-weight:600; cursor:pointer; }
+    button.secondary { background:#1f2433; border:1px solid var(--border); color:var(--text); }
+    .list { list-style:none; padding:0; margin:0; display:grid; gap:8px; }
+    .item { border:1px solid var(--border); border-radius:10px; padding:10px; font-size:0.88rem; }
+    .messages { min-height:50vh; display:flex; flex-direction:column; gap:10px; margin-bottom:14px; }
+    .msg { border:1px solid var(--border); border-radius:12px; padding:10px 12px; white-space:pre-wrap; }
+    .user { background:#24304d; align-self:flex-end; max-width:85%; }
+    .assistant { background:#1a2335; align-self:flex-start; max-width:92%; }
+    .status { color:var(--muted); font-size:0.85rem; margin-top:8px; }
+    .links a { color:var(--accent); text-decoration:none; }
+    @media (max-width:900px) { .wrap { grid-template-columns:1fr; } }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <aside class="panel">
+      <h1>Web Learner Bot</h1>
+      <p class="muted">Second specialist under master bot. Reads HTML pages, saves compressed text + images locally.</p>
+      <p id="provider-status" class="muted">AI provider: loading…</p>
+      <div class="links muted">
+        <a href="/ui/">Coding bot</a> · <a href="/ui/notes.html">Notes</a>
+      </div>
+
+      <div class="section">Capture a web page</div>
+      <form id="capture-form">
+        <input id="url-input" type="url" placeholder="https://example.com/page" required />
+        <div style="height:8px"></div>
+        <input id="max-images" type="number" min="0" max="20" value="8" />
+        <div style="height:8px"></div>
+        <button type="submit">Capture & compress</button>
+        <button type="button" class="secondary" id="approve-btn">Approve internet</button>
+      </form>
+
+      <div class="section">Stored learning</div>
+      <ul id="captures" class="list"></ul>
+    </aside>
+
+    <main class="panel">
+      <div id="messages" class="messages">
+        <div class="muted">Ask about stored pages, or capture a URL on the left.</div>
+      </div>
+      <form id="chat-form">
+        <textarea id="message-input" rows="4" placeholder="What did we learn from capture #1?" required></textarea>
+        <div style="height:8px"></div>
+        <button type="submit">Ask web-learner-bot</button>
+      </form>
+      <div id="status" class="status"></div>
+    </main>
+  </div>
+
+  <script>
+    const BOT = "web-learner-bot";
+    let pendingPermissionId = null;
+
+    async function loadProvider() {
+      const res = await fetch("/health");
+      if (!res.ok) return;
+      const info = await res.json();
+      const ai = info.ai || {};
+      const el = document.getElementById("provider-status");
+      if (ai.provider === "ollama") {
+        el.textContent = `AI: Ollama / ${ai.model_configured || ai.model}`;
+      } else {
+        el.textContent = "AI: echo stub (set PROJECT_WE_PROVIDER=ollama for real answers)";
+      }
+    }
+
+    async function loadCaptures() {
+      const res = await fetch(`/specialists/${BOT}/captures`);
+      const list = document.getElementById("captures");
+      if (!res.ok) { list.innerHTML = "<li class='item'>No captures yet</li>"; return; }
+      const items = await res.json();
+      if (!items.length) { list.innerHTML = "<li class='item'>No captures yet</li>"; return; }
+      list.innerHTML = items.map(c => `
+        <li class="item">
+          <strong>#${c.id}</strong> ${c.title}<br>
+          <span class="muted">${c.url}</span><br>
+          ${c.text_chars} chars · ${c.image_count} images · ${c.compressed_bytes} bytes compressed
+        </li>`).join("");
+    }
+
+    function append(role, text) {
+      const box = document.getElementById("messages");
+      if (box.querySelector(".muted")) box.innerHTML = "";
+      const div = document.createElement("div");
+      div.className = `msg ${role}`;
+      div.textContent = text;
+      box.appendChild(div);
+      box.scrollTop = box.scrollHeight;
+    }
+
+    document.getElementById("capture-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const url = document.getElementById("url-input").value.trim();
+      const max_images = Number(document.getElementById("max-images").value || 8);
+      const res = await fetch(`/specialists/${BOT}/capture`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url, max_images }),
+      });
+      const data = await res.json();
+      if (data.requires_permission) {
+        pendingPermissionId = data.permission_request_id;
+        append("assistant", data.message || "Internet permission required.");
+        document.getElementById("status").textContent = "Click Approve internet, then capture again.";
+        return;
+      }
+      if (!res.ok) {
+        document.getElementById("status").textContent = data.detail || "Capture failed";
+        return;
+      }
+      append("assistant", `${data.message}\nTitle: ${data.title}\nSummary: ${data.summary}`);
+      document.getElementById("status").textContent = `Saved capture #${data.capture_id}`;
+      await loadCaptures();
+    });
+
+    document.getElementById("approve-btn").addEventListener("click", async () => {
+      if (!pendingPermissionId) {
+        const res = await fetch("/permissions?status=pending");
+        const items = await res.json();
+        const internet = items.find(p => p.capability === "internet");
+        pendingPermissionId = internet ? internet.id : null;
+      }
+      if (!pendingPermissionId) {
+        document.getElementById("status").textContent = "No pending internet request. Try capture first.";
+        return;
+      }
+      await fetch(`/permissions/${pendingPermissionId}/decision`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ approve: true }),
+      });
+      document.getElementById("status").textContent = "Internet approved. Capture again.";
+      pendingPermissionId = null;
+    });
+
+    document.getElementById("chat-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const message = document.getElementById("message-input").value.trim();
+      if (!message) return;
+      document.getElementById("message-input").value = "";
+      append("user", message);
+      const res = await fetch(`/specialists/${BOT}/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message }),
+      });
+      const data = await res.json();
+      append("assistant", data.response || data.detail || "No response");
+    });
+
+    Promise.all([loadProvider(), loadCaptures()]).catch(console.error);
+  </script>
+</body>
+</html>

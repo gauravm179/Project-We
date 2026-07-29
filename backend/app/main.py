@@ -22,7 +22,7 @@ from app.api.routes import (
     skills,
     specialists,
 )
-from app.bootstrap import bootstrap_coding_bot
+from app.bootstrap import bootstrap_all_bots
 from app.core.config import DATA_DIR
 from app.core.logging import configure_logging
 from app.db.base import Base
@@ -37,7 +37,7 @@ async def lifespan(_: FastAPI):
     configure_logging()
     Base.metadata.create_all(bind=get_engine())
     with get_session_factory()() as db:
-        bootstrap_coding_bot(db)
+        bootstrap_all_bots(db)
     reset_start_time()
     heartbeat_task = asyncio.create_task(
         heartbeat_loop(get_session_factory(), interval_seconds=60.0)
@@ -109,6 +109,11 @@ def chat_ui_no_slash() -> RedirectResponse:
 @app.get("/chat-ui", include_in_schema=False)
 def chat_ui_alias() -> FileResponse:
     return FileResponse(CHAT_INDEX)
+
+
+@app.get("/web-ui", include_in_schema=False)
+def web_learner_ui() -> FileResponse:
+    return FileResponse(STATIC_DIR / "web-learner.html")
 
 
 app.mount("/ui", StaticFiles(directory=STATIC_DIR, html=True), name="ui")

@@ -38,5 +38,6 @@ async def health() -> dict[str, object]:
         "sos_non_removable": True,
         "ai": provider_info,
         "chat_ui": "/ui/",
+        "web_learner_ui": "/ui/web-learner.html",
         "notes_ui": "/ui/notes.html",
     }
