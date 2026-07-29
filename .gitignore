@@ -15,5 +15,8 @@ Thumbs.db
 data/logs/
 data/models/
 data/project_we.db
+data/project_we.db-*
 data/web_learning/
 *.db
+*.db-shm
+*.db-wal
