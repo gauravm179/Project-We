@@ -23,6 +23,7 @@ class VoiceStatusResponse(BaseModel):
     deps_ready: bool = False
     stt_ready: bool = False
     deps: dict[str, bool] = Field(default_factory=dict)
+    python_hint: str | None = None
 
 
 class VoiceCommandRequest(BaseModel):
