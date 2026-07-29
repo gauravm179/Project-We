@@ -38,19 +38,32 @@ class VoiceAssistant:
         self._status = VoiceStatus()
         self._overrides: dict[str, str | float] = {}
 
-    def status(self) -> dict:
-        data = asdict(self._status)
-        data["deps_ready"] = self._check_deps_ready()
-        return data
-
     def _check_deps_ready(self) -> bool:
         try:
+            import numpy  # noqa: F401
             import sounddevice  # noqa: F401
             import openwakeword  # noqa: F401
             import faster_whisper  # noqa: F401
+            import onnxruntime  # noqa: F401
         except ImportError:
             return False
         return True
+
+    def deps_report(self) -> dict[str, bool]:
+        report: dict[str, bool] = {}
+        for name in ("numpy", "sounddevice", "openwakeword", "faster_whisper", "onnxruntime"):
+            try:
+                __import__(name)
+                report[name] = True
+            except ImportError:
+                report[name] = False
+        return report
+
+    def status(self) -> dict:
+        data = asdict(self._status)
+        data["deps_ready"] = self._check_deps_ready()
+        data["deps"] = self.deps_report()
+        return data
 
     async def start(self, settings: Settings) -> None:
         if self._task and not self._task.done():

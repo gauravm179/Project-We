@@ -185,6 +185,17 @@
         depsReady = !!data.deps_ready;
         wakeWarn.style.display = depsReady ? "none" : "block";
         document.getElementById("wake-start").disabled = !depsReady;
+        if (depsReady) {
+          wakeWarn.style.display = "none";
+        } else {
+          const missing = Object.entries(data.deps || {})
+            .filter(([, ok]) => !ok)
+            .map(([name]) => name);
+          wakeWarn.textContent = missing.length
+            ? `Wake-word packages missing: ${missing.join(", ")}. Browser mic + text box still work. Run: pip install -e '.[voice]' && pip install onnxruntime`
+            : "Wake-word packages are not installed. Browser mic + text box still work.";
+          wakeWarn.style.display = "block";
+        }
         const micHint = SpeechRecognition
           ? "browser mic ready — click Start listening"
           : "browser speech API missing (use Chrome/Edge, or type below)";
