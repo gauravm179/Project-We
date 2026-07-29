@@ -11,7 +11,8 @@ from app.core.config import get_settings
 from app.db.models import Specialist, SpecialistMessage
 from app.learning.guidelines import GuidelinesService
 from app.learning.service import LearningService
-from app.web_learning.service import WebLearningService
+from app.web_learning.intent import message_needs_web_assist
+from app.web_learning.service import WebAssistResult, WebLearningService
 from app.memory.service import MemoryService
 from app.policy.service import PolicyService
 from app.schemas.specialist import (
@@ -120,6 +121,49 @@ class SpecialistService:
             and self._learning.message_requests_live_internet(user_message)
         )
         internet_approved = self._policy.has_approved_capability(db, "internet")
+        skip_web_assist_early = slug == "coding-bot" and (needs_guidelines or wants_live_docs)
+
+        web_assist: WebAssistResult | dict[str, object] | None = None
+        if (
+            slug != "web-learner-bot"
+            and message_needs_web_assist(user_message)
+            and not skip_web_assist_early
+        ):
+            web_assist = await self._web_learning.assist_for_message(
+                db,
+                user_message,
+                requesting_bot=slug,
+            )
+            if isinstance(web_assist, WebAssistResult) and web_assist.requires_permission:
+                assistant_text = str(
+                    web_assist.message or "Internet permission required for web search or page reading."
+                )
+                db.add(
+                    SpecialistMessage(specialist_id=row.id, role="assistant", content=assistant_text)
+                )
+                db.commit()
+                return SpecialistChatReply(
+                    specialist_slug=row.slug,
+                    specialist_name=row.name,
+                    response=assistant_text,
+                    requires_permission=True,
+                    required_capability="internet",
+                    permission_request_id=int(web_assist.permission_request_id),  # type: ignore[arg-type]
+                )
+            if isinstance(web_assist, dict) and web_assist.get("requires_permission"):
+                assistant_text = str(web_assist.get("message", "Internet permission required."))
+                db.add(
+                    SpecialistMessage(specialist_id=row.id, role="assistant", content=assistant_text)
+                )
+                db.commit()
+                return SpecialistChatReply(
+                    specialist_slug=row.slug,
+                    specialist_name=row.name,
+                    response=assistant_text,
+                    requires_permission=True,
+                    required_capability="internet",
+                    permission_request_id=int(web_assist["permission_request_id"]),  # type: ignore[arg-type]
+                )
 
         if (
             wants_live_docs
@@ -158,6 +202,33 @@ class SpecialistService:
 
         provider = build_provider(settings)
         memory_context = self._memory.recent_context(db=db)
+
+        if (
+            web_assist
+            and isinstance(web_assist, WebAssistResult)
+            and web_assist.context
+        ):
+            memory_context = (
+                f"{memory_context}\n\n--- WEB LEARNER ASSIST ---\n{web_assist.context}"
+                if memory_context
+                else f"--- WEB LEARNER ASSIST ---\n{web_assist.context}"
+            )
+        elif (
+            slug != "web-learner-bot"
+            and message_needs_web_assist(user_message)
+            and not skip_web_assist_early
+            and web_assist is None
+        ):
+            web_assist = await self._web_learning.assist_for_message(
+                db, user_message, requesting_bot=slug
+            )
+            if isinstance(web_assist, WebAssistResult) and web_assist.context:
+                memory_context = (
+                    f"{memory_context}\n\n--- WEB LEARNER ASSIST ---\n{web_assist.context}"
+                    if memory_context
+                    else f"--- WEB LEARNER ASSIST ---\n{web_assist.context}"
+                )
+
         lesson_context = self._learning.build_lesson_context(db, specialist_id=row.id)
         used_lessons = bool(lesson_context)
         if lesson_context:

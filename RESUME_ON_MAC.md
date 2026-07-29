@@ -31,7 +31,8 @@ pip install -e ".[dev]"
 uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
-Open: http://127.0.0.1:8000/ui/
+Open: http://127.0.0.1:8000/ui/ (coding bot)  
+Web learner: http://127.0.0.1:8000/ui/web-learner.html
 
 ## Start with real local Llama (for maths/code answers)
 

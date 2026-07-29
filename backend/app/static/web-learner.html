@@ -48,6 +48,19 @@
         <button type="button" class="secondary" id="approve-btn">Approve internet</button>
       </form>
 
+      <div class="section">Search the web</div>
+      <form id="search-form">
+        <input id="search-input" type="text" placeholder="search for Python PEP 8" required />
+        <div style="height:8px"></div>
+        <select id="search-engine" style="width:100%; border-radius:10px; border:1px solid var(--border); background:#1f2433; color:var(--text); padding:10px 12px;">
+          <option value="duckduckgo">DuckDuckGo</option>
+          <option value="bing">Bing</option>
+        </select>
+        <div style="height:8px"></div>
+        <button type="submit">Search & store</button>
+      </form>
+      <ul id="searches" class="list"></ul>
+
       <div class="section">Stored learning</div>
       <ul id="captures" class="list"></ul>
     </aside>
@@ -95,6 +108,45 @@
           ${c.text_chars} chars · ${c.image_count} images · ${c.compressed_bytes} bytes compressed
         </li>`).join("");
     }
+
+    function renderSearchResults(data) {
+      const list = document.getElementById("searches");
+      if (!data.results?.length) {
+        list.innerHTML = "<li class='item'>No results</li>";
+        return;
+      }
+      list.innerHTML = data.results.map((r, i) => `
+        <li class="item">
+          <strong>${i + 1}.</strong> ${r.title}<br>
+          <a href="${r.url}" target="_blank" rel="noopener">${r.url}</a><br>
+          <span class="muted">${r.snippet || ""}</span>
+        </li>`).join("");
+    }
+
+    document.getElementById("search-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const query = document.getElementById("search-input").value.trim();
+      const engine = document.getElementById("search-engine").value;
+      const res = await fetch("/web/search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query, engine, limit: 5 }),
+      });
+      const data = await res.json();
+      if (data.requires_permission) {
+        pendingPermissionId = data.permission_request_id;
+        append("assistant", data.message || "Internet permission required.");
+        document.getElementById("status").textContent = "Click Approve internet, then search again.";
+        return;
+      }
+      if (!res.ok) {
+        document.getElementById("status").textContent = data.detail || "Search failed";
+        return;
+      }
+      append("assistant", `Search #${data.search_id} (${data.engine}): ${data.query}\n${data.message}`);
+      renderSearchResults(data);
+      document.getElementById("status").textContent = `Stored ${data.result_count} results`;
+    });
 
     function append(role, text) {
       const box = document.getElementById("messages");

@@ -24,6 +24,7 @@ class Settings:
     ollama_reasoning: bool = True
     strict_local_mode: bool = True
     internet_mode: str = "ask"
+    web_search_engine: str = "duckduckgo"
 
 
 @lru_cache(maxsize=1)
@@ -38,4 +39,5 @@ def get_settings() -> Settings:
         ollama_reasoning=os.getenv("PROJECT_WE_OLLAMA_REASONING", "true").lower() == "true",
         strict_local_mode=os.getenv("PROJECT_WE_STRICT_LOCAL_MODE", "true").lower() == "true",
         internet_mode=os.getenv("PROJECT_WE_INTERNET_MODE", "ask").lower(),
+        web_search_engine=os.getenv("PROJECT_WE_WEB_SEARCH_ENGINE", "duckduckgo").lower(),
     )

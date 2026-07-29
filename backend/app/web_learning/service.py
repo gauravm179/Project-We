@@ -14,13 +14,22 @@ import httpx
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.config import DATA_DIR
-from app.db.models import Specialist, WebCapture, WebCaptureImage
+from app.core.config import DATA_DIR, get_settings
+from app.db.models import Specialist, WebCapture, WebCaptureImage, WebSearch
 from app.policy.service import PolicyService
+from app.web_learning.intent import (
+    extract_search_query,
+    extract_urls,
+    is_valid_http_url,
+    message_needs_web_assist,
+)
+from app.web_learning.search import SearchResult, WebSearchClient
 
 logger = logging.getLogger(__name__)
 
 WEB_LEARNING_DIR = DATA_DIR / "web_learning" / "captures"
+SEARCH_DIR = DATA_DIR / "web_learning" / "searches"
+WEB_LEARNER_SLUG = "web-learner-bot"
 _IMG_SRC_PATTERN = re.compile(r"""<img[^>]+src=["']([^"']+)["']""", re.IGNORECASE)
 
 
@@ -59,10 +68,185 @@ class CaptureResult:
     summary: str
 
 
+@dataclass(frozen=True)
+class SearchPersistResult:
+    search_id: int
+    engine: str
+    query: str
+    result_count: int
+    compressed_bytes: int
+    results: list[SearchResult]
+
+
+@dataclass(frozen=True)
+class WebAssistResult:
+    context: str
+    search_id: int | None = None
+    capture_ids: tuple[int, ...] = ()
+    requires_permission: bool = False
+    permission_request_id: int | None = None
+    message: str | None = None
+
+
 class WebLearningService:
     def __init__(self) -> None:
         self._policy = PolicyService()
         WEB_LEARNING_DIR.mkdir(parents=True, exist_ok=True)
+        SEARCH_DIR.mkdir(parents=True, exist_ok=True)
+
+    def _permission_block(
+        self, db: Session, reason: str
+    ) -> dict[str, object]:
+        request = self._policy.create_permission_request(
+            db=db,
+            capability="internet",
+            reason=reason,
+        )
+        db.commit()
+        return {
+            "requires_permission": True,
+            "required_capability": "internet",
+            "permission_request_id": request.id,
+            "message": "Approve internet access so web-learner-bot can search or read pages.",
+        }
+
+    async def search_web(
+        self,
+        db: Session,
+        query: str,
+        *,
+        engine: str | None = None,
+        limit: int = 5,
+        auto_capture_top: bool = False,
+    ) -> SearchPersistResult | dict[str, object]:
+        specialist = db.scalar(select(Specialist).where(Specialist.slug == WEB_LEARNER_SLUG))
+        if specialist is None:
+            return {"error": "Web learner bot not found"}
+
+        if not self.internet_allowed(db):
+            return self._permission_block(db, f"Web search for: {query}")
+
+        settings = get_settings()
+        client = WebSearchClient(engine=engine or settings.web_search_engine)
+        results = await client.search(query, limit=limit)
+
+        row = WebSearch(
+            specialist_id=specialist.id,
+            engine=client._engine,
+            query=query,
+            result_count=len(results),
+            compressed_bytes=0,
+            storage_path="",
+        )
+        db.add(row)
+        db.flush()
+
+        search_dir = SEARCH_DIR / str(row.id)
+        search_dir.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "query": query,
+            "engine": client._engine,
+            "results": [
+                {"title": r.title, "url": r.url, "snippet": r.snippet} for r in results
+            ],
+        }
+        gz_path = search_dir / "results.json.gz"
+        compressed = self._write_gzip_json(gz_path, payload)
+        row.compressed_bytes = compressed
+        row.storage_path = str(search_dir.relative_to(DATA_DIR))
+        db.commit()
+        db.refresh(row)
+
+        if auto_capture_top and results:
+            await self.capture_url(
+                db,
+                WEB_LEARNER_SLUG,
+                results[0].url,
+                max_images=3,
+                allow_without_permission=True,
+            )
+
+        return SearchPersistResult(
+            search_id=row.id,
+            engine=client._engine,
+            query=query,
+            result_count=len(results),
+            compressed_bytes=compressed,
+            results=results,
+        )
+
+    async def assist_for_message(
+        self,
+        db: Session,
+        message: str,
+        *,
+        requesting_bot: str,
+        auto_capture_urls: bool = True,
+        auto_search: bool = True,
+        max_url_captures: int = 2,
+    ) -> WebAssistResult | dict[str, object]:
+        if not message_needs_web_assist(message):
+            return WebAssistResult(context="")
+
+        if not self.internet_allowed(db):
+            blocked = self._permission_block(
+                db,
+                f"{requesting_bot} needs web-learner-bot for: {message[:200]}",
+            )
+            return WebAssistResult(
+                context="",
+                requires_permission=True,
+                permission_request_id=int(blocked["permission_request_id"]),  # type: ignore[arg-type]
+                message=str(blocked["message"]),
+            )
+
+        parts: list[str] = [
+            f"WEB LEARNER ASSIST for {requesting_bot} (via web-learner-bot):"
+        ]
+        capture_ids: list[int] = []
+        search_id: int | None = None
+
+        if auto_search:
+            query = extract_search_query(message)
+            if query:
+                search = await self.search_web(db, query, limit=5)
+                if isinstance(search, dict):
+                    return search
+                search_id = search.search_id
+                parts.append(f"Search #{search.search_id} ({search.engine}): {search.query}")
+                for idx, result in enumerate(search.results, start=1):
+                    parts.append(
+                        f"{idx}. {result.title}\n   URL: {result.url}\n   {result.snippet}"
+                    )
+
+        if auto_capture_urls:
+            for url in extract_urls(message)[:max_url_captures]:
+                if not is_valid_http_url(url):
+                    continue
+                captured = await self.capture_url(
+                    db,
+                    WEB_LEARNER_SLUG,
+                    url,
+                    max_images=4,
+                    allow_without_permission=True,
+                )
+                if isinstance(captured, CaptureResult):
+                    capture_ids.append(captured.capture_id)
+                    parts.append(
+                        f"Captured #{captured.capture_id}: {captured.title} ({captured.url})\n"
+                        f"Summary: {captured.summary}"
+                    )
+
+        return WebAssistResult(
+            context="\n".join(parts),
+            search_id=search_id,
+            capture_ids=tuple(capture_ids),
+        )
+
+    def format_assist_context(self, assist: WebAssistResult) -> str:
+        if not assist.context:
+            return ""
+        return assist.context
 
     def internet_allowed(self, db: Session) -> bool:
         return self._policy.has_approved_capability(db, "internet")

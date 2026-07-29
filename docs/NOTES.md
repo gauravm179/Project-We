@@ -72,8 +72,8 @@ Project We uses a **master bot + specialist sub-bots** model.
 Master Bot (Project We)     POST /chat
  │
  ├── coding-bot             POST /specialists/coding-bot/chat
+ ├── web-learner-bot        POST /specialists/web-learner-bot/chat
  ├── trading-bot            (user-created)
- ├── troubleshoot-bot       (user-created)
  └── ...                    (user-created)
 ```
 
@@ -227,7 +227,7 @@ Notes are **served live** from `docs/NOTES.md` by the backend — they do not di
 | Base branch | `feature/v0.2-memory` |
 | Feature branch | `cursor/coding-bot-training-c355` |
 | PR | #4 — bootstrap trained coding-bot |
-| Tests | 45+ passing |
+| Tests | 59+ passing |
 
 ---
 
@@ -238,6 +238,59 @@ Notes are **served live** from `docs/NOTES.md` by the backend — they do not di
 - Document/codebase ingestion for coding bot context
 - Desktop UI (Tauri + React) — API only for now
 - Stronger coding models (recommend `deepseek-coder` or `qwen2.5-coder` via Ollama)
+
+---
+
+## 9. Web Learner bot (second specialist)
+
+Slug: `web-learner-bot`  
+UI: http://127.0.0.1:8000/ui/web-learner.html
+
+### What it does
+1. Reads HTML web pages from URLs (with internet permission)
+2. Extracts page text + images
+3. Stores compressed learning on your laptop at `data/web_learning/captures/{id}/`
+4. Recalls stored pages in future chat answers
+
+### Trained skills (active on startup)
+- `read-web-page`
+- `extract-page-images`
+- `compress-store-learning`
+- `recall-stored-pages`
+
+### How to use
+
+```bash
+# 1) Approve internet once (or use Approve internet button in UI)
+curl -X POST http://127.0.0.1:8000/permissions \
+  -H 'Content-Type: application/json' \
+  -d '{"capability":"internet","reason":"read web pages"}'
+# then approve the returned id:
+curl -X POST http://127.0.0.1:8000/permissions/1/decision \
+  -H 'Content-Type: application/json' \
+  -d '{"approve": true}'
+
+# 2) Capture a page (stores compressed text + images)
+curl -X POST http://127.0.0.1:8000/specialists/web-learner-bot/capture \
+  -H 'Content-Type: application/json' \
+  -d '{"url":"https://example.com","max_images":8}'
+
+# 3) List stored learning
+curl http://127.0.0.1:8000/specialists/web-learner-bot/captures
+
+# 4) Ask about stored content
+curl -X POST http://127.0.0.1:8000/specialists/web-learner-bot/chat \
+  -H 'Content-Type: application/json' \
+  -d '{"message":"Summarize what we learned from capture #1"}'
+```
+
+### Storage format (compressed on laptop)
+```
+data/web_learning/captures/{id}/
+  page.json.gz        # page text + metadata
+  manifest.json.gz    # capture summary
+  images/img_001.jpg.gz  # compressed images
+```
 
 ---
 

@@ -29,8 +29,9 @@ WEB_LEARNER_BOT = SpecialistCreate(
     ),
     system_prompt=(
         "You are a web learning specialist working under Project We, the master assistant. "
-        "You help the user read HTML pages from allowed URLs, extract useful text and images, "
-        "and store them locally in compressed form for later recall. "
+        "You read HTML pages, search the web (DuckDuckGo or Bing), extract images, "
+        "and store compressed learning on the laptop for later recall. "
+        "Other bots (coding-bot, master) delegate URLs and search queries to you. "
         "Always respect internet permission settings. "
         "When answering, prefer previously stored captures listed in STORED WEB LEARNING. "
         "Summarize page content clearly and mention which capture IDs you used."
@@ -82,6 +83,21 @@ WEB_LEARNER_SKILLS: tuple[SkillCreate, ...] = (
         ),
         parameters_schema={"lookback": {"type": "integer", "default": 5}},
     ),
+    SkillCreate(
+        slug="web-search",
+        name="Web Search",
+        category="web-learning",
+        description="Search the web via DuckDuckGo or Bing and return ranked links for other bots.",
+        instructions=(
+            "When any bot or the user needs to find pages on the internet, run a web search. "
+            "Return the query, engine used, and top result URLs with titles. "
+            "Optionally capture the best result page for deeper reading."
+        ),
+        parameters_schema={
+            "engine": {"type": "string", "default": "duckduckgo"},
+            "limit": {"type": "integer", "default": 5},
+        },
+    ),
 )
 
 WEB_LEARNER_SKILL_PARAMETERS: dict[str, dict] = {
@@ -89,6 +105,7 @@ WEB_LEARNER_SKILL_PARAMETERS: dict[str, dict] = {
     "extract-page-images": {"max_images": 8},
     "compress-store-learning": {"compression": "gzip+jpeg"},
     "recall-stored-pages": {"lookback": 5},
+    "web-search": {"engine": "duckduckgo", "limit": 5},
 }
 
 

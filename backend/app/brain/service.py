@@ -11,6 +11,8 @@ from app.db.models import ChatMessage
 from app.memory.service import MemoryService
 from app.policy.service import PolicyService
 from app.schemas.chat import ChatHistoryItem, ChatReply
+from app.web_learning.intent import message_needs_web_assist
+from app.web_learning.service import WebLearningService, WebAssistResult
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +21,7 @@ class BrainService:
     def __init__(self) -> None:
         self._memory_service = MemoryService()
         self._policy_service = PolicyService()
+        self._web_learning = WebLearningService()
 
     async def chat(self, db: Session, user_message: str) -> ChatReply:
         settings = get_settings()
@@ -66,6 +69,40 @@ class BrainService:
 
         provider = build_provider(settings)
         memory_context = self._memory_service.recent_context(db=db)
+
+        if message_needs_web_assist(user_message):
+            assist = await self._web_learning.assist_for_message(
+                db, user_message, requesting_bot="master-bot"
+            )
+            if isinstance(assist, WebAssistResult) and assist.requires_permission:
+                assistant_text = str(
+                    assist.message or "Internet permission required for web search or page reading."
+                )
+                db.add(ChatMessage(role="assistant", content=assistant_text))
+                db.commit()
+                return ChatReply(
+                    response=assistant_text,
+                    requires_permission=True,
+                    required_capability="internet",
+                    permission_request_id=int(assist.permission_request_id),  # type: ignore[arg-type]
+                )
+            if isinstance(assist, dict) and assist.get("requires_permission"):
+                assistant_text = str(assist.get("message", "Internet permission required."))
+                db.add(ChatMessage(role="assistant", content=assistant_text))
+                db.commit()
+                return ChatReply(
+                    response=assistant_text,
+                    requires_permission=True,
+                    required_capability="internet",
+                    permission_request_id=int(assist["permission_request_id"]),  # type: ignore[arg-type]
+                )
+            if isinstance(assist, WebAssistResult) and assist.context:
+                memory_context = (
+                    f"{memory_context}\n\n--- WEB LEARNER ASSIST ---\n{assist.context}"
+                    if memory_context
+                    else f"--- WEB LEARNER ASSIST ---\n{assist.context}"
+                )
+
         assistant_text = await provider.generate(user_message, memory_context=memory_context)
 
         assistant_record = ChatMessage(role="assistant", content=assistant_text)

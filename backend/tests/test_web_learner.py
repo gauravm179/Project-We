@@ -31,6 +31,7 @@ def test_web_learner_has_trained_skills(client: TestClient):
         "extract-page-images",
         "compress-store-learning",
         "recall-stored-pages",
+        "web-search",
     }
     assert all(s["status"] == "active" for s in skills)
 

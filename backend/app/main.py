@@ -21,6 +21,7 @@ from app.api.routes import (
     safety,
     skills,
     specialists,
+    web,
 )
 from app.bootstrap import bootstrap_all_bots
 from app.core.config import DATA_DIR
@@ -95,6 +96,7 @@ app.include_router(control.router)
 app.include_router(safety.router)
 app.include_router(specialists.router)
 app.include_router(skills.router)
+app.include_router(web.router)
 app.include_router(runtime.router)
 
 STATIC_DIR = Path(__file__).parent / "static"

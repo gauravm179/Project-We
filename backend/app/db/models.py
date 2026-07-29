@@ -244,3 +244,20 @@ class WebCaptureImage(Base):
         default=lambda: datetime.now(timezone.utc),
         nullable=False,
     )
+
+
+class WebSearch(Base):
+    __tablename__ = "web_searches"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    specialist_id: Mapped[int] = mapped_column(ForeignKey("specialists.id"), nullable=False)
+    engine: Mapped[str] = mapped_column(String(32), nullable=False, default="duckduckgo")
+    query: Mapped[str] = mapped_column(Text, nullable=False)
+    result_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    compressed_bytes: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    storage_path: Mapped[str] = mapped_column(String(512), nullable=False, default="")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
