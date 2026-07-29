@@ -14,6 +14,7 @@ This repository currently contains **v0.2 backend foundation**:
 - Live screen and voice ingestion endpoints (only when explicitly shared)
 - AI provider abstraction
 - Optional Ollama provider integration
+- Always-listening / browser voice assistant (`/ui/voice.html`)
 - Unit tests with pytest
 
 ## Design principles
@@ -84,6 +85,11 @@ This repository currently contains **v0.2 backend foundation**:
 - `POST /control/actions/{id}/execute` - execute approved action record
 - `GET /safety/status` - read SOS emergency-stop state
 - `POST /safety/sos/trigger` - trigger immediate app shutdown (red button flow)
+- `GET /voice/status` - voice runtime status (browser + wake-word)
+- `POST /voice/start` / `POST /voice/stop` - wake-word listening loop
+- `POST /voice/command` - run a spoken transcript through the master bot
+- `PATCH /voice/config` - wake word / STT / TTS settings
+- Voice UI: http://127.0.0.1:8000/ui/voice.html
 
 ## Provider configuration
 

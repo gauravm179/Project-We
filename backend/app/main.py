@@ -21,10 +21,11 @@ from app.api.routes import (
     safety,
     skills,
     specialists,
+    voice,
     web,
 )
 from app.bootstrap import bootstrap_all_bots
-from app.core.config import DATA_DIR
+from app.core.config import DATA_DIR, get_settings
 from app.core.logging import configure_logging
 from app.db.base import Base
 from app.db.session import get_engine, get_session_factory
@@ -43,7 +44,14 @@ async def lifespan(_: FastAPI):
     heartbeat_task = asyncio.create_task(
         heartbeat_loop(get_session_factory(), interval_seconds=60.0)
     )
+    if get_settings().voice_enabled:
+        try:
+            await voice.voice_assistant.start(get_settings())
+        except RuntimeError:
+            # Keep API up; voice can be started later after deps/mic are ready.
+            pass
     yield
+    await voice.voice_assistant.stop()
     heartbeat_task.cancel()
 
 
@@ -97,6 +105,7 @@ app.include_router(safety.router)
 app.include_router(specialists.router)
 app.include_router(skills.router)
 app.include_router(web.router)
+app.include_router(voice.router)
 app.include_router(runtime.router)
 
 STATIC_DIR = Path(__file__).parent / "static"
@@ -116,6 +125,11 @@ def chat_ui_alias() -> FileResponse:
 @app.get("/web-ui", include_in_schema=False)
 def web_learner_ui() -> FileResponse:
     return FileResponse(STATIC_DIR / "web-learner.html")
+
+
+@app.get("/voice-ui", include_in_schema=False)
+def voice_ui() -> FileResponse:
+    return FileResponse(STATIC_DIR / "voice.html")
 
 
 app.mount("/ui", StaticFiles(directory=STATIC_DIR, html=True), name="ui")

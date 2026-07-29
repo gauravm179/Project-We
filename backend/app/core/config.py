@@ -25,6 +25,12 @@ class Settings:
     strict_local_mode: bool = True
     internet_mode: str = "ask"
     web_search_engine: str = "duckduckgo"
+    voice_enabled: bool = False
+    voice_wake_word: str = "hey jarvis"
+    voice_wake_sensitivity: float = 0.5
+    voice_stt_model: str = "base"
+    voice_tts_voice: str = "en_US-amy-medium"
+    voice_silence_threshold: float = 1.5
 
 
 @lru_cache(maxsize=1)
@@ -40,4 +46,10 @@ def get_settings() -> Settings:
         strict_local_mode=os.getenv("PROJECT_WE_STRICT_LOCAL_MODE", "true").lower() == "true",
         internet_mode=os.getenv("PROJECT_WE_INTERNET_MODE", "ask").lower(),
         web_search_engine=os.getenv("PROJECT_WE_WEB_SEARCH_ENGINE", "duckduckgo").lower(),
+        voice_enabled=os.getenv("PROJECT_WE_VOICE_ENABLED", "false").lower() == "true",
+        voice_wake_word=os.getenv("PROJECT_WE_VOICE_WAKE_WORD", "hey jarvis"),
+        voice_wake_sensitivity=float(os.getenv("PROJECT_WE_VOICE_WAKE_SENSITIVITY", "0.5")),
+        voice_stt_model=os.getenv("PROJECT_WE_VOICE_STT_MODEL", "base"),
+        voice_tts_voice=os.getenv("PROJECT_WE_VOICE_TTS_VOICE", "en_US-amy-medium"),
+        voice_silence_threshold=float(os.getenv("PROJECT_WE_VOICE_SILENCE_THRESHOLD", "1.5")),
     )

@@ -29,6 +29,11 @@ Working notes for system configuration, bot hierarchy, and how to run the projec
 | `PROJECT_WE_OLLAMA_TIMEOUT_SECONDS` | `120` | Wait time for local generation |
 | `PROJECT_WE_STRICT_LOCAL_MODE` | `true` | Enforce local-first policy |
 | `PROJECT_WE_INTERNET_MODE` | `ask` | `ask`, `never`, or `always` |
+| `PROJECT_WE_WEB_SEARCH_ENGINE` | `duckduckgo` | `duckduckgo` or `bing` |
+| `PROJECT_WE_VOICE_ENABLED` | `false` | Auto-start wake-word listener on boot |
+| `PROJECT_WE_VOICE_WAKE_WORD` | `hey jarvis` | Wake phrase for openWakeWord |
+| `PROJECT_WE_VOICE_STT_MODEL` | `base` | faster-whisper model size |
+| `PROJECT_WE_VOICE_TTS_VOICE` | `en_US-amy-medium` | Piper voice name (macOS falls back to `say`) |
 
 ### Local Llama for questions + reasoning
 
@@ -73,6 +78,7 @@ Master Bot (Project We)     POST /chat
  │
  ├── coding-bot             POST /specialists/coding-bot/chat
  ├── web-learner-bot        POST /specialists/web-learner-bot/chat
+ ├── voice assistant         POST /voice/command  (+ /ui/voice.html)
  ├── trading-bot            (user-created)
  └── ...                    (user-created)
 ```
@@ -227,7 +233,7 @@ Notes are **served live** from `docs/NOTES.md` by the backend — they do not di
 | Base branch | `feature/v0.2-memory` |
 | Feature branch | `cursor/coding-bot-training-c355` |
 | PR | #4 — bootstrap trained coding-bot |
-| Tests | 59+ passing |
+| Tests | 72+ passing |
 
 ---
 
@@ -248,15 +254,19 @@ UI: http://127.0.0.1:8000/ui/web-learner.html
 
 ### What it does
 1. Reads HTML web pages from URLs (with internet permission)
-2. Extracts page text + images
-3. Stores compressed learning on your laptop at `data/web_learning/captures/{id}/`
-4. Recalls stored pages in future chat answers
+2. **Searches the web** via DuckDuckGo or Bing (with internet permission)
+3. Extracts page text + images
+4. Stores compressed learning on your laptop at `data/web_learning/captures/{id}/`
+5. Stores compressed search results at `data/web_learning/searches/{id}/`
+6. Recalls stored pages in future chat answers
+7. **Serves other bots** — when coding-bot or master-bot sees a URL or search query, they delegate to web-learner-bot automatically
 
 ### Trained skills (active on startup)
 - `read-web-page`
 - `extract-page-images`
 - `compress-store-learning`
 - `recall-stored-pages`
+- `web-search`
 
 ### How to use
 
@@ -282,6 +292,21 @@ curl http://127.0.0.1:8000/specialists/web-learner-bot/captures
 curl -X POST http://127.0.0.1:8000/specialists/web-learner-bot/chat \
   -H 'Content-Type: application/json' \
   -d '{"message":"Summarize what we learned from capture #1"}'
+
+# 5) Search the web (shared endpoint — any bot can use this)
+curl -X POST http://127.0.0.1:8000/web/search \
+  -H 'Content-Type: application/json' \
+  -d '{"query":"Python PEP 8","engine":"duckduckgo","limit":5}'
+
+# 6) Shared web assist (search + capture for any bot)
+curl -X POST http://127.0.0.1:8000/web/assist \
+  -H 'Content-Type: application/json' \
+  -d '{"message":"search for fastapi dependency injection","requesting_bot":"coding-bot"}'
+
+# 7) Coding bot auto-delegates URLs and search queries to web-learner-bot
+curl -X POST http://127.0.0.1:8000/specialists/coding-bot/chat \
+  -H 'Content-Type: application/json' \
+  -d '{"message":"search for Python asyncio patterns"}'
 ```
 
 ### Storage format (compressed on laptop)
@@ -290,6 +315,38 @@ data/web_learning/captures/{id}/
   page.json.gz        # page text + metadata
   manifest.json.gz    # capture summary
   images/img_001.jpg.gz  # compressed images
+
+data/web_learning/searches/{id}/
+  results.json.gz     # search query + ranked links
+```
+
+---
+
+## 10. Voice bot (local Mac)
+
+UI: http://127.0.0.1:8000/ui/voice.html
+
+### Two modes
+1. **Browser mic (recommended first)** — Web Speech API → `POST /voice/command` → master bot reply → browser TTS
+2. **Wake-word** — openWakeWord + faster-whisper + macOS `say` / Piper (`pip install -e '.[voice]'`)
+
+### API
+- `GET /voice/status`
+- `POST /voice/start` / `POST /voice/stop`
+- `PATCH /voice/config`
+- `POST /voice/command` — `{ "transcript": "...", "shared": true }`
+
+### Enable on Mac
+```bash
+cd ~/Project-We/backend && source .venv/bin/activate
+# browser mic works with base install
+uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+# open http://127.0.0.1:8000/ui/voice.html
+
+# optional wake-word:
+pip install -e ".[voice]"
+export PROJECT_WE_VOICE_ENABLED=true
+export PROJECT_WE_VOICE_WAKE_WORD="hey jarvis"
 ```
 
 ---
