@@ -39,7 +39,7 @@ class VoiceAssistant:
         self._overrides: dict[str, str | float] = {}
 
     def _check_deps_ready(self) -> bool:
-        """Wake-word mic stack ready (STT may still be missing)."""
+        """Wake-word mic stack ready (ONNX + openwakeword + sounddevice)."""
         try:
             import numpy  # noqa: F401
             import sounddevice  # noqa: F401
@@ -77,6 +77,10 @@ class VoiceAssistant:
         data["deps_ready"] = self._check_deps_ready()
         data["stt_ready"] = self._check_stt_ready()
         data["deps"] = self.deps_report()
+        data["python_hint"] = (
+            "Python 3.11 or 3.12 recommended for wake-word "
+            "(onnxruntime/faster-whisper often missing on 3.14)."
+        )
         return data
 
     async def start(self, settings: Settings) -> None:
@@ -84,17 +88,20 @@ class VoiceAssistant:
             return
         if not self._check_deps_ready():
             self._status.active = False
+            missing = [k for k, ok in self.deps_report().items() if not ok and k != "faster_whisper"]
             raise RuntimeError(
-                "Wake-word mic packages missing. Run: pip install -e '.[voice]'. "
-                "Or use browser 'Start listening' / type a question on /ui/voice.html."
+                "Wake-word mic packages missing"
+                + (f" ({', '.join(missing)})" if missing else "")
+                + ". On Python 3.14, onnxruntime may be unavailable — use Python 3.12 "
+                "or browser 'Start listening' / type a question on /ui/voice.html."
             )
         if not self._check_stt_ready():
             self._status.active = False
             raise RuntimeError(
-                "Speech-to-text (faster-whisper) is missing. On Mac with Python 3.14:\n"
-                "  1) brew install ffmpeg\n"
-                "  2) pip install -e '.[voice-stt]'\n"
-                "Or use Python 3.12: brew install python@3.12 && python3.12 -m venv .venv\n"
+                "Speech-to-text (faster-whisper) is missing. On Mac:\n"
+                "  brew install ffmpeg\n"
+                "  pip install -e '.[voice-stt]'\n"
+                "Prefer Python 3.12 if pip cannot find wheels. "
                 "Meanwhile use browser 'Start listening' or type a question."
             )
 

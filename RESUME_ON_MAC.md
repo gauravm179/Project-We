@@ -77,14 +77,18 @@ pip install -e '.[voice]'
 pip install -e '.[voice-stt]'
 ```
 
-**Option B — use Python 3.12 (recommended for wake-word):**
+**Option B — use Python 3.12 (recommended for full wake-word on Mac):**
 ```bash
 brew install python@3.12
 cd ~/Project-We/backend
 python3.12 -m venv .venv312
 source .venv312/bin/activate
-pip install -e '.[dev,voice,voice-stt]'
+pip install -U pip
+pip install -e '.[dev,voice,voice-stt,voice-onnx]'
 ```
+
+Note: Python **3.14** often cannot install `onnxruntime` or `faster-whisper` wheels yet.
+Browser mic + typed questions still work on 3.14 with the base app.
 
 Then:
 ```bash
