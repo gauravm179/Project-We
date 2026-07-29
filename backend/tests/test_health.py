@@ -1,13 +1,14 @@
-def test_root_redirects_to_chat_ui(client):
+def test_root_redirects_to_home_ui(client):
     response = client.get("/", follow_redirects=False)
     assert response.status_code == 307
-    assert response.headers["location"] == "/ui/"
+    assert response.headers["location"] == "/ui/home.html"
 
 
-def test_root_opens_chat_ui(client):
+def test_root_opens_home_ui(client):
     response = client.get("/", follow_redirects=True)
     assert response.status_code == 200
-    assert "Code Assistant" in response.text
+    assert "Project We" in response.text
+    assert "Voice Bot" in response.text
 
 
 def test_chat_ui_alias(client):
@@ -33,3 +34,5 @@ def test_health(client):
     assert body["ai"]["provider"] == "echo"
     assert body["ai"]["model"] == "echo"
     assert body["chat_ui"] == "/ui/"
+    assert body["voice_ui"] == "/ui/voice.html"
+    assert body["home_ui"] == "/ui/home.html"
