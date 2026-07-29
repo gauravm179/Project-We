@@ -40,6 +40,7 @@ async def lifespan(_: FastAPI):
     Base.metadata.create_all(bind=get_engine())
     with get_session_factory()() as db:
         bootstrap_all_bots(db)
+        SafetyService().ensure_initialized(db)
     reset_start_time()
     heartbeat_task = asyncio.create_task(
         heartbeat_loop(get_session_factory(), interval_seconds=60.0)
@@ -74,7 +75,13 @@ _safety_service = SafetyService()
 
 @app.middleware("http")
 async def emergency_stop_guard(request: Request, call_next):
-    if request.url.path.startswith("/safety"):
+    path = request.url.path
+    # Skip DB for static assets and high-frequency voice status polls.
+    if (
+        path.startswith("/safety")
+        or path.startswith("/ui")
+        or path in {"/voice/status", "/health", "/favicon.ico"}
+    ):
         return await call_next(request)
 
     db = get_session_factory()()
@@ -89,6 +96,8 @@ async def emergency_stop_guard(request: Request, call_next):
                     )
                 },
             )
+    except Exception:  # noqa: BLE001 - never block the app on SOS read failures
+        pass
     finally:
         db.close()
 
