@@ -19,8 +19,14 @@ def test_voice_start_fails_without_deps(client: TestClient):
     with patch("app.voice.assistant.VoiceAssistant._check_deps_ready", return_value=False):
         response = client.post("/voice/start")
         assert response.status_code == 400
-        assert "deps" in response.json()["detail"].lower() or "install" in response.json()["detail"].lower()
-
+        detail = response.json()["detail"].lower()
+        assert "wake-word" in detail or "pip install" in detail
+        # Browser path must still be healthy
+        status = client.get("/voice/status").json()
+        assert status["active"] is False
+        assert status["deps_ready"] is False
+        # Sticky scary error should not block the UI status
+        assert not (status.get("last_error") or "").lower().startswith("voice hardware")
 
 def test_voice_start_and_stop_routes(client: TestClient):
     with patch("app.api.routes.voice.voice_assistant.start", new_callable=AsyncMock) as mock_start:

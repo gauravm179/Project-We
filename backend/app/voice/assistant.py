@@ -56,12 +56,12 @@ class VoiceAssistant:
         if self._task and not self._task.done():
             return
         if not self._check_deps_ready():
-            self._status.last_error = (
-                "Voice hardware deps missing. On Mac run: "
-                "pip install -e '.[voice]' then grant Microphone access."
-            )
+            # Do not sticky-set last_error — browser mic / text Q&A still work.
             self._status.active = False
-            raise RuntimeError(self._status.last_error)
+            raise RuntimeError(
+                "Wake-word mode needs packages. Run: pip install -e '.[voice]'. "
+                "Meanwhile use browser 'Start listening' or type a question on /ui/voice.html."
+            )
 
         self._stop_event.clear()
         self._status.active = True
