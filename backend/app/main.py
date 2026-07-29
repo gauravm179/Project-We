@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.api.routes import (
     chat,
@@ -13,13 +15,17 @@ from app.api.routes import (
     health,
     inputs,
     memory,
+    notes,
     permissions,
     runtime,
     safety,
     skills,
     specialists,
+    voice,
+    web,
 )
-from app.core.config import DATA_DIR
+from app.bootstrap import bootstrap_all_bots
+from app.core.config import DATA_DIR, get_settings
 from app.core.logging import configure_logging
 from app.db.base import Base
 from app.db.session import get_engine, get_session_factory
@@ -32,11 +38,20 @@ async def lifespan(_: FastAPI):
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     configure_logging()
     Base.metadata.create_all(bind=get_engine())
+    with get_session_factory()() as db:
+        bootstrap_all_bots(db)
     reset_start_time()
     heartbeat_task = asyncio.create_task(
         heartbeat_loop(get_session_factory(), interval_seconds=60.0)
     )
+    if get_settings().voice_enabled:
+        try:
+            await voice.voice_assistant.start(get_settings())
+        except RuntimeError:
+            # Keep API up; voice can be started later after deps/mic are ready.
+            pass
     yield
+    await voice.voice_assistant.stop()
     heartbeat_task.cancel()
 
 
@@ -80,6 +95,7 @@ async def emergency_stop_guard(request: Request, call_next):
     return await call_next(request)
 
 app.include_router(health.router)
+app.include_router(notes.router)
 app.include_router(chat.router)
 app.include_router(memory.router)
 app.include_router(inputs.router)
@@ -88,4 +104,32 @@ app.include_router(control.router)
 app.include_router(safety.router)
 app.include_router(specialists.router)
 app.include_router(skills.router)
+app.include_router(web.router)
+app.include_router(voice.router)
 app.include_router(runtime.router)
+
+STATIC_DIR = Path(__file__).parent / "static"
+CHAT_INDEX = STATIC_DIR / "index.html"
+
+
+@app.get("/ui", include_in_schema=False)
+def chat_ui_no_slash() -> RedirectResponse:
+    return RedirectResponse(url="/ui/", status_code=307)
+
+
+@app.get("/chat-ui", include_in_schema=False)
+def chat_ui_alias() -> FileResponse:
+    return FileResponse(CHAT_INDEX)
+
+
+@app.get("/web-ui", include_in_schema=False)
+def web_learner_ui() -> FileResponse:
+    return FileResponse(STATIC_DIR / "web-learner.html")
+
+
+@app.get("/voice-ui", include_in_schema=False)
+def voice_ui() -> FileResponse:
+    return FileResponse(STATIC_DIR / "voice.html")
+
+
+app.mount("/ui", StaticFiles(directory=STATIC_DIR, html=True), name="ui")

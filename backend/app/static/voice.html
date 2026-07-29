@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Project We — Voice Bot</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0f1117;
+      --panel: #171b26;
+      --border: #2c3347;
+      --text: #e8ecf5;
+      --muted: #9aa6bf;
+      --accent: #5b8cff;
+      --ok: #3ddc97;
+      --danger: #ff6b6b;
+      --listen: #00897b;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+      background: radial-gradient(circle at top, #132033 0%, var(--bg) 50%);
+      color: var(--text);
+      min-height: 100vh;
+    }
+    .wrap { max-width: 900px; margin: 0 auto; padding: 24px; display: grid; gap: 18px; }
+    .panel {
+      background: rgba(23, 27, 38, 0.94);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 20px;
+    }
+    h1 { margin: 0 0 6px; font-size: 1.4rem; }
+    .muted { color: var(--muted); font-size: 0.92rem; }
+    .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 14px; }
+    button {
+      border: none; border-radius: 12px; padding: 12px 16px; font: inherit;
+      cursor: pointer; background: linear-gradient(135deg, var(--accent), #7aa2ff);
+      color: #fff; font-weight: 600;
+    }
+    button.secondary { background: #1f2433; border: 1px solid var(--border); color: var(--text); }
+    button.listen { background: var(--listen); }
+    button.danger { background: var(--danger); }
+    button:disabled { opacity: 0.55; cursor: not-allowed; }
+    .mic {
+      width: 120px; height: 120px; border-radius: 50%; margin: 18px auto;
+      display: grid; place-items: center; font-size: 2rem;
+      background: #1f2433; border: 3px solid var(--border); transition: 0.2s;
+    }
+    .mic.active { border-color: var(--ok); box-shadow: 0 0 0 8px rgba(61,220,151,0.15); }
+    .messages { display: flex; flex-direction: column; gap: 10px; min-height: 240px; }
+    .msg { border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; white-space: pre-wrap; }
+    .user { background: #24304d; align-self: flex-end; max-width: 88%; }
+    .assistant { background: #1a2335; align-self: flex-start; max-width: 92%; }
+    .system { background: #1b1f2a; color: var(--muted); }
+    .status { margin-top: 10px; color: var(--muted); font-size: 0.88rem; }
+    .status.ok { color: var(--ok); }
+    .status.error { color: var(--danger); }
+    a { color: var(--accent); text-decoration: none; }
+    input[type="checkbox"] { transform: scale(1.1); }
+    label { font-size: 0.9rem; color: var(--muted); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <section class="panel">
+      <h1>Voice Bot</h1>
+      <p class="muted">
+        Speak commands on this Mac. Browser mic uses Web Speech (works immediately).
+        Optional wake-word mode needs <code>pip install -e '.[voice]'</code>.
+      </p>
+      <p class="muted">
+        <a href="/ui/">Coding bot</a> ·
+        <a href="/ui/web-learner.html">Web learner</a> ·
+        <a href="/ui/notes.html">Notes</a>
+      </p>
+      <div class="mic" id="mic">🎙</div>
+      <div class="row">
+        <button id="listen-btn" class="listen">Hold to talk / Start listening</button>
+        <button id="stop-listen-btn" class="secondary" disabled>Stop listening</button>
+        <button id="wake-start" class="secondary">Start wake-word</button>
+        <button id="wake-stop" class="secondary">Stop wake-word</button>
+      </div>
+      <div class="row">
+        <label><input type="checkbox" id="speak-replies" checked /> Speak replies aloud</label>
+        <label><input type="checkbox" id="shared" checked /> I share microphone / voice</label>
+      </div>
+      <div id="status" class="status">Checking voice status…</div>
+    </section>
+
+    <section class="panel">
+      <div id="messages" class="messages">
+        <div class="msg system">Say things like: “search for Python PEP 8”, “remind me to buy milk”, or ask a coding question.</div>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    const statusEl = document.getElementById("status");
+    const messagesEl = document.getElementById("messages");
+    const micEl = document.getElementById("mic");
+    const listenBtn = document.getElementById("listen-btn");
+    const stopListenBtn = document.getElementById("stop-listen-btn");
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    let recognition = null;
+    let listening = false;
+
+    function setStatus(text, kind = "") {
+      statusEl.textContent = text;
+      statusEl.className = `status ${kind}`.trim();
+    }
+
+    function append(role, text) {
+      const div = document.createElement("div");
+      div.className = `msg ${role}`;
+      div.textContent = text;
+      messagesEl.appendChild(div);
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+    }
+
+    function speak(text) {
+      if (!document.getElementById("speak-replies").checked) return;
+      if (!window.speechSynthesis) return;
+      window.speechSynthesis.cancel();
+      const utter = new SpeechSynthesisUtterance(text);
+      utter.rate = 1.0;
+      window.speechSynthesis.speak(utter);
+    }
+
+    async function refreshWakeStatus() {
+      try {
+        const res = await fetch("/voice/status");
+        if (!res.ok) return;
+        const data = await res.json();
+        const deps = data.deps_ready ? "wake-word deps ready" : "wake-word deps not installed";
+        const active = data.active ? "listening for wake word" : "wake-word off";
+        setStatus(`Browser mic ready · ${active} · ${deps}` + (data.last_error ? ` · ${data.last_error}` : ""), data.last_error ? "error" : "ok");
+      } catch (e) {
+        setStatus("Could not reach /voice/status", "error");
+      }
+    }
+
+    async function sendCommand(transcript) {
+      append("user", transcript);
+      setStatus("Processing voice command…");
+      const res = await fetch("/voice/command", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          transcript,
+          shared: document.getElementById("shared").checked,
+          speak: false,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const err = data.detail || "Voice command failed";
+        append("system", err);
+        setStatus(err, "error");
+        return;
+      }
+      append("assistant", data.reply || "(no reply)");
+      if (data.routed_to && data.routed_to !== "master") {
+        append("system", `Routed to ${data.routed_to}` + (data.route_reason ? ` (${data.route_reason})` : ""));
+      }
+      speak(data.reply || "");
+      setStatus(data.routed_to ? `Ready · via ${data.routed_to}` : "Ready", "ok");
+    }
+
+    function startBrowserListening() {
+      if (!SpeechRecognition) {
+        setStatus("Web Speech API not available in this browser. Use Chrome/Edge/Safari.", "error");
+        return;
+      }
+      if (!document.getElementById("shared").checked) {
+        setStatus("Check “I share microphone / voice” first.", "error");
+        return;
+      }
+      recognition = new SpeechRecognition();
+      recognition.continuous = false;
+      recognition.interimResults = false;
+      recognition.lang = "en-US";
+      recognition.onstart = () => {
+        listening = true;
+        micEl.classList.add("active");
+        listenBtn.disabled = true;
+        stopListenBtn.disabled = false;
+        setStatus("Listening… speak now", "ok");
+      };
+      recognition.onresult = (event) => {
+        const transcript = event.results[0][0].transcript.trim();
+        if (transcript) sendCommand(transcript);
+      };
+      recognition.onerror = (event) => {
+        setStatus(`Mic error: ${event.error}`, "error");
+      };
+      recognition.onend = () => {
+        listening = false;
+        micEl.classList.remove("active");
+        listenBtn.disabled = false;
+        stopListenBtn.disabled = true;
+        if (statusEl.textContent.startsWith("Listening")) setStatus("Ready", "ok");
+      };
+      recognition.start();
+    }
+
+    function stopBrowserListening() {
+      if (recognition) recognition.stop();
+    }
+
+    listenBtn.addEventListener("click", startBrowserListening);
+    stopListenBtn.addEventListener("click", stopBrowserListening);
+
+    document.getElementById("wake-start").addEventListener("click", async () => {
+      const res = await fetch("/voice/start", { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        append("system", data.detail || "Could not start wake-word mode");
+        setStatus(data.detail || "Wake-word start failed", "error");
+        return;
+      }
+      append("system", `Wake-word mode on (say “${data.wake_word}”)`);
+      await refreshWakeStatus();
+    });
+
+    document.getElementById("wake-stop").addEventListener("click", async () => {
+      await fetch("/voice/stop", { method: "POST" });
+      append("system", "Wake-word mode off");
+      await refreshWakeStatus();
+    });
+
+    refreshWakeStatus();
+    setInterval(refreshWakeStatus, 5000);
+  </script>
+</body>
+</html>

@@ -39,6 +39,11 @@ class SpecialistChatReply(BaseModel):
     specialist_slug: str
     specialist_name: str
     response: str
+    requires_permission: bool = False
+    required_capability: str | None = None
+    permission_request_id: int | None = None
+    used_lessons: bool = False
+    used_guidelines: bool = False
 
 
 class SpecialistMessageRecord(BaseModel):

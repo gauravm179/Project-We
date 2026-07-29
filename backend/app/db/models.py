@@ -144,6 +144,22 @@ class SpecialistMessage(Base):
     )
 
 
+class CodingLesson(Base):
+    __tablename__ = "coding_lessons"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    specialist_id: Mapped[int] = mapped_column(ForeignKey("specialists.id"), nullable=False)
+    mistake: Mapped[str] = mapped_column(Text, nullable=False)
+    correction: Mapped[str] = mapped_column(Text, nullable=False)
+    language: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    topic: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+
+
 class Skill(Base):
     __tablename__ = "skills"
 
@@ -189,6 +205,58 @@ class Heartbeat(Base):
     uptime_seconds: Mapped[float] = mapped_column(Float, nullable=False)
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="healthy")
     recorded_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+
+
+class WebCapture(Base):
+    __tablename__ = "web_captures"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    specialist_id: Mapped[int] = mapped_column(ForeignKey("specialists.id"), nullable=False)
+    url: Mapped[str] = mapped_column(Text, nullable=False)
+    title: Mapped[str] = mapped_column(String(500), nullable=False, default="")
+    summary: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    text_chars: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    image_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    compressed_bytes: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    storage_path: Mapped[str] = mapped_column(String(512), nullable=False, default="")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+
+
+class WebCaptureImage(Base):
+    __tablename__ = "web_capture_images"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    capture_id: Mapped[int] = mapped_column(ForeignKey("web_captures.id"), nullable=False)
+    source_url: Mapped[str] = mapped_column(Text, nullable=False)
+    filename: Mapped[str] = mapped_column(String(128), nullable=False)
+    original_bytes: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    compressed_bytes: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+
+
+class WebSearch(Base):
+    __tablename__ = "web_searches"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    specialist_id: Mapped[int] = mapped_column(ForeignKey("specialists.id"), nullable=False)
+    engine: Mapped[str] = mapped_column(String(32), nullable=False, default="duckduckgo")
+    query: Mapped[str] = mapped_column(Text, nullable=False)
+    result_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    compressed_bytes: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    storage_path: Mapped[str] = mapped_column(String(512), nullable=False, default="")
+    created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
         nullable=False,

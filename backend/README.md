@@ -48,7 +48,9 @@ uvicorn app.main:app --reload
 
 ## Specialist bots
 
-Create domain-specific sub-bots that share memory but maintain isolated chat:
+Create domain-specific sub-bots that share memory but maintain isolated chat.
+
+`coding-bot` is bootstrapped automatically on startup with four active coding skills. See [docs/NOTES.md](../docs/NOTES.md) for full details.
 
 - `POST /specialists` — register a new specialist (slug, name, sector, system_prompt)
 - `GET /specialists` — list all specialists
@@ -116,6 +118,22 @@ Once active, the skill's instructions and parameters are injected into every cha
 - `POST /runtime/heartbeat` — manually trigger a heartbeat
 - `GET /runtime/heartbeats` — recent heartbeat history
 - Background heartbeat runs automatically every 60 seconds
+
+## Voice assistant
+
+- UI: http://127.0.0.1:8000/ui/voice.html (browser mic works without extra packages)
+- `GET /voice/status` · `POST /voice/start` · `POST /voice/stop` · `PATCH /voice/config`
+- `POST /voice/command` — process a transcript (`shared=true` required)
+- Optional wake-word deps: `pip install -e ".[voice]"` then `PROJECT_WE_VOICE_ENABLED=true`
+
+Env vars:
+
+- `PROJECT_WE_VOICE_ENABLED` (`true`/`false`)
+- `PROJECT_WE_VOICE_WAKE_WORD` (default: `hey jarvis`)
+- `PROJECT_WE_VOICE_WAKE_SENSITIVITY` (default: `0.5`)
+- `PROJECT_WE_VOICE_STT_MODEL` (default: `base`)
+- `PROJECT_WE_VOICE_TTS_VOICE` (default: `en_US-amy-medium`)
+- `PROJECT_WE_VOICE_SILENCE_THRESHOLD` (default: `1.5`)
 
 ## Test
 

@@ -14,6 +14,7 @@ This repository currently contains **v0.2 backend foundation**:
 - Live screen and voice ingestion endpoints (only when explicitly shared)
 - AI provider abstraction
 - Optional Ollama provider integration
+- Always-listening / browser voice assistant (`/ui/voice.html`)
 - Unit tests with pytest
 
 ## Design principles
@@ -22,6 +23,12 @@ This repository currently contains **v0.2 backend foundation**:
 - Cross-platform: same codebase for macOS and Windows
 - Transparent: explicit settings and modular services
 - Replaceable: model providers can be swapped without breaking memory/data
+
+## Documentation
+
+- [Architecture](docs/ARCHITECTURE.md) — service layers and data flow
+- [Agent notes](docs/NOTES.md) — system config, bot hierarchy, coding-bot training, dev commands
+- **Browser notes:** http://127.0.0.1:8000/ui/notes.html (served live from the running backend)
 
 ## Quick start
 
@@ -50,13 +57,18 @@ This repository currently contains **v0.2 backend foundation**:
    uvicorn app.main:app --reload
    ```
 
-5. Open docs:
+5. Open the chat UI:
 
-   - [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
+   - [http://127.0.0.1:8000/](http://127.0.0.1:8000/) (redirects to chat)
+   - [http://127.0.0.1:8000/ui/](http://127.0.0.1:8000/ui/) — coding-bot chat
+   - [http://127.0.0.1:8000/ui/notes.html](http://127.0.0.1:8000/ui/notes.html) — notes
+   - [http://127.0.0.1:8000/health](http://127.0.0.1:8000/health) — JSON status
+   - [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs) — API docs
 
 ## API endpoints
 
-- `GET /` - service metadata and status
+- `GET /` - redirects to coding-bot chat UI (`/ui/`)
+- `GET /health` - service metadata, AI provider status
 - `POST /chat` - send message and get assistant response
 - `GET /chat/history` - read persisted chat history
 - `GET /memory` - read extracted structured memory
@@ -73,25 +85,63 @@ This repository currently contains **v0.2 backend foundation**:
 - `POST /control/actions/{id}/execute` - execute approved action record
 - `GET /safety/status` - read SOS emergency-stop state
 - `POST /safety/sos/trigger` - trigger immediate app shutdown (red button flow)
+- `GET /voice/status` - voice runtime status (browser + wake-word)
+- `POST /voice/start` / `POST /voice/stop` - wake-word listening loop
+- `POST /voice/command` - run a spoken transcript through the master bot
+- `PATCH /voice/config` - wake word / STT / TTS settings
+- Voice UI: http://127.0.0.1:8000/ui/voice.html
 
 ## Provider configuration
 
-By default, the backend uses a local echo provider.
+By default, the backend uses a local echo provider (for tests).
 
-To use Ollama:
+### Use a local Llama model (recommended for real Q&A + reasoning)
+
+1. Install and start [Ollama](https://ollama.com) on your machine.
+2. Pull a Llama model:
+
+```bash
+ollama pull llama3.2
+# stronger reasoning/coding options:
+# ollama pull llama3.1:8b
+# ollama pull llama3.1:70b
+```
+
+3. Start Project We with Ollama:
 
 ```bash
 export PROJECT_WE_PROVIDER=ollama
-export PROJECT_WE_OLLAMA_MODEL=qwen2.5:7b
+export PROJECT_WE_OLLAMA_MODEL=llama3.2
 export PROJECT_WE_OLLAMA_BASE_URL=http://127.0.0.1:11434
+export PROJECT_WE_OLLAMA_REASONING=true
+uvicorn app.main:app --reload
 ```
 
 Windows PowerShell:
 
 ```powershell
 $env:PROJECT_WE_PROVIDER="ollama"
-$env:PROJECT_WE_OLLAMA_MODEL="qwen2.5:7b"
+$env:PROJECT_WE_OLLAMA_MODEL="llama3.2"
 $env:PROJECT_WE_OLLAMA_BASE_URL="http://127.0.0.1:11434"
+$env:PROJECT_WE_OLLAMA_REASONING="true"
+```
+
+Then open http://127.0.0.1:8000/ui/ and ask coding/reasoning questions.
+
+Check provider status:
+
+```bash
+curl http://127.0.0.1:8000/health
+```
+
+Look for `"ai": { "provider": "ollama", "model": "llama3.2", "reachable": true, ... }`.
+
+### Older Ollama example (Qwen)
+
+```bash
+export PROJECT_WE_PROVIDER=ollama
+export PROJECT_WE_OLLAMA_MODEL=qwen2.5:7b
+export PROJECT_WE_OLLAMA_BASE_URL=http://127.0.0.1:11434
 ```
 
 ## Strict local policy defaults
