@@ -13,6 +13,17 @@ _SEARCH_FOR_PATTERN = re.compile(
     r"\bsearch\s+for\s+(.+?)(?:\s+on\s+(?:google|the\s+web|internet))?\s*$",
     IGNORECASE,
 )
+_LEARN_INTENT_PATTERN = re.compile(
+    r"\b(learn|teach(?:\s+me)?|explain|how\s+to\s+read|tutorial|guide)\b",
+    IGNORECASE,
+)
+_FILLER_PATTERN = re.compile(
+    r"\b("
+    r"can\s+you|could\s+you|please|go\s+though|go\s+through|use\s+the\s+web\s+bot|"
+    r"web\s+bot|website|this\s+site|the\s+page|and\s+learn"
+    r")\b",
+    IGNORECASE,
+)
 
 
 def extract_urls(message: str) -> list[str]:
@@ -30,8 +41,26 @@ def extract_search_query(message: str) -> str | None:
         match = pattern.search(text)
         if match:
             query = match.group(1).strip(" .?!")
+            # Drop trailing URLs from the query text
+            query = _URL_PATTERN.sub(" ", query)
+            query = re.sub(r"\s+", " ", query).strip(" .?!")
             if query:
                 return query
+
+    # "learn how to read trade charts" + a URL → search educational pages
+    # (JS chart apps like TradingView don't yield useful HTML text alone).
+    urls = extract_urls(text)
+    if urls and _LEARN_INTENT_PATTERN.search(text):
+        topic = text
+        for url in urls:
+            topic = topic.replace(url, " ")
+        topic = _FILLER_PATTERN.sub(" ", topic)
+        topic = re.sub(r"\s+", " ", topic).strip(" .?!")
+        if len(topic) >= 8:
+            host = urlparse(urls[0]).netloc.replace("www.", "")
+            if "tradingview" in host.lower() or "chart" in topic.lower():
+                return f"how to read candlestick trading charts beginners {topic}"
+            return f"{topic} tutorial guide"
     return None
 
 
