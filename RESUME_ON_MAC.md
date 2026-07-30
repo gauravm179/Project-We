@@ -2,9 +2,23 @@
 
 All work is saved on GitHub **`main`** (also on `feature/v0.2-memory`).
 
-Last saved: **0.3.3** — local **multi-chart curriculum** (line/bar/candle/Heikin-Ashi/volume/trend/S/R)
-stored under `data/chart_curriculum/` + SQLite skills on web-learner-bot. TradingView/learn still
-answers instantly. `/voice/command` always returns HTTP 200 on this build.
+Last saved: **0.3.4** — **shared local learnings for all bots** (SQLite `bot_learnings` +
+`data/bot_learnings/`). Master, coding-bot, and web-learner-bot store notes and recall them
+next time. Also keeps multi-chart curriculum (0.3.3) and instant TradingView teach.
+
+## Shared learnings (all bots)
+
+Ask:
+
+`i want for all bots to learn new learnings and store them locally so they can refer next time`
+
+Or just restart uvicorn (bootstrap enables it automatically).
+
+Then:
+
+`remember that I prefer the 1-hour timeframe`
+
+Later any bot should see it under **STORED LOCAL LEARNINGS**. List via `GET /learnings`.
 
 ## Chart curriculum (local skills on the laptop)
 
@@ -43,13 +57,13 @@ uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
 Open **one** Voice tab: http://127.0.0.1:8000/ui/voice.html  
-Hard-refresh (Cmd+Shift+R). Stamp must say **Server 0.3.3** and `chart_fast_path=true`.
+Hard-refresh (Cmd+Shift+R). Stamp must say **Server 0.3.4** and `chart_fast_path=true`.
 
 Prove it:
 
 ```bash
-curl -s http://127.0.0.1:8000/health | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d["version"], d.get("chart_fast_path"), d.get("voice_command_always_200"))'
-# Expect: 0.3.3 True True
+curl -s http://127.0.0.1:8000/health | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d["version"], d.get("chart_fast_path"), d.get("shared_local_learnings"))'
+# Expect: 0.3.4 True True
 ```
 
 ## TradingView / “learn how to read trade charts”

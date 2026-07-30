@@ -18,6 +18,7 @@ data/project_we.db
 data/project_we.db-*
 data/web_learning/
 data/chart_curriculum/
+data/bot_learnings/
 *.db
 *.db-shm
 *.db-wal

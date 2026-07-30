@@ -11,6 +11,12 @@ from app.brain.providers import build_provider
 from app.core.config import get_settings
 from app.db.models import Specialist, SpecialistMessage
 from app.learning.guidelines import GuidelinesService
+from app.learning.local_store import (
+    LocalLearningStore,
+    extract_explicit_learning,
+    is_shared_learning_policy_ask,
+    maybe_record_web_assist,
+)
 from app.learning.service import LearningService
 from app.web_learning.intent import (
     is_chart_curriculum_ask,
@@ -51,6 +57,7 @@ class SpecialistService:
         self._memory = MemoryService()
         self._skills = SkillService()
         self._learning = LearningService()
+        self._local_learnings = LocalLearningStore()
         self._guidelines = GuidelinesService()
         self._policy = PolicyService()
         self._web_learning = WebLearningService()
@@ -117,6 +124,31 @@ class SpecialistService:
 
         self._memory.extract_and_store(db=db, message=user_message)
 
+        if is_shared_learning_policy_ask(user_message):
+            result = self._local_learnings.enable_for_all_bots(db)
+            assistant_text = self._local_learnings.format_enable_reply(result)
+            db.add(
+                SpecialistMessage(specialist_id=row.id, role="assistant", content=assistant_text)
+            )
+            db.commit()
+            return SpecialistChatReply(
+                specialist_slug=row.slug,
+                specialist_name=row.name,
+                response=assistant_text,
+            )
+
+        explicit = extract_explicit_learning(user_message)
+        if explicit:
+            self._local_learnings.record(
+                db,
+                bot_slug=slug,
+                kind="insight",
+                title="User note",
+                content=explicit,
+                source_ref="explicit-remember",
+                shared=True,
+            )
+
         settings = get_settings()
         needs_guidelines = (
             slug == "coding-bot"
@@ -137,6 +169,15 @@ class SpecialistService:
             progress.step("chart-curriculum", "Installing local multi-chart skills")
             result = install_chart_curriculum(db)
             assistant_text = format_install_reply(result)
+            self._local_learnings.record(
+                db,
+                bot_slug=slug,
+                kind="curriculum",
+                title="Chart curriculum installed",
+                content=assistant_text[:2000],
+                source_ref="chart-curriculum",
+                shared=True,
+            )
             db.add(
                 SpecialistMessage(specialist_id=row.id, role="assistant", content=assistant_text)
             )
@@ -353,6 +394,13 @@ class SpecialistService:
 
         provider = build_provider(settings)
         memory_context = self._memory.recent_context(db=db)
+        stored = self._local_learnings.recall_context(db, slug, limit=8)
+        if stored:
+            memory_context = (
+                f"{memory_context}\n\n--- STORED LOCAL LEARNINGS ---\n{stored}"
+                if memory_context
+                else f"--- STORED LOCAL LEARNINGS ---\n{stored}"
+            )
 
         if (
             web_assist
@@ -363,6 +411,13 @@ class SpecialistService:
                 f"{memory_context}\n\n--- WEB LEARNER ASSIST ---\n{web_assist.context}"
                 if memory_context
                 else f"--- WEB LEARNER ASSIST ---\n{web_assist.context}"
+            )
+            maybe_record_web_assist(
+                db,
+                bot_slug=slug,
+                user_message=user_message,
+                context=web_assist.context,
+                capture_ids=list(web_assist.capture_ids or []),
             )
 
         lesson_context = self._learning.build_lesson_context(db, specialist_id=row.id)

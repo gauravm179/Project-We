@@ -69,6 +69,7 @@ async def health(
         # Present only on 0.3.2+: chart/TradingView teach asks skip web/Ollama.
         "chart_fast_path": True,
         "voice_command_always_200": True,
+        "shared_local_learnings": True,
         "ai": provider_info,
         "home_ui": "/ui/home.html",
         "chat_ui": "/ui/",

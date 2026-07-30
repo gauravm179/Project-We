@@ -137,6 +137,10 @@ def bootstrap_web_learner_bot(db: Session) -> None:
 def bootstrap_all_bots(db: Session) -> None:
     _bootstrap_coding_only(db)
     bootstrap_web_learner_bot(db)
+    # Shared local learning skills + policy note for master and every specialist.
+    from app.learning.local_store import LocalLearningStore
+
+    LocalLearningStore().enable_for_all_bots(db)
 
 
 # Backward-compatible alias

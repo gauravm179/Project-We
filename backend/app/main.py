@@ -14,6 +14,7 @@ from app.api.routes import (
     control,
     health,
     inputs,
+    learnings,
     memory,
     notes,
     permissions,
@@ -58,7 +59,7 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(
     title="Project We",
-    version="0.3.3",
+    version="0.3.4",
     lifespan=lifespan,
 )
 
@@ -116,6 +117,7 @@ app.include_router(health.router)
 app.include_router(notes.router)
 app.include_router(chat.router)
 app.include_router(memory.router)
+app.include_router(learnings.router)
 app.include_router(inputs.router)
 app.include_router(permissions.router)
 app.include_router(control.router)
