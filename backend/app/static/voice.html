@@ -304,13 +304,13 @@
       }
     }
 
-    const MIN_SERVER = { major: 0, minor: 3, patch: 5 };
+    const MIN_SERVER = { major: 0, minor: 3, patch: 6 };
     const RESTART_HINT =
       "OLD SERVER still running. In Terminal: Ctrl+C uvicorn → " +
       "cd ~/Project-We && git checkout main && git pull origin main → " +
       "cd backend && source .venv/bin/activate → " +
       "uvicorn app.main:app --host 127.0.0.1 --port 8000 " +
-      "(no --reload). Hard-refresh this page until stamp shows Server 0.3.5+.";
+      "(no --reload). Hard-refresh this page until stamp shows Server 0.3.6+.";
 
     function parseVersion(v) {
       const m = String(v || "").match(/^(\d+)\.(\d+)\.(\d+)/);
@@ -356,7 +356,7 @@
           const err = data.detail || data.reply || `Voice command failed (HTTP ${res.status})`;
           append("system", typeof err === "string" ? err : JSON.stringify(err));
           append("system", RESTART_HINT);
-          statusEl.textContent = "Command failed — server likely outdated (need 0.3.4+)";
+          statusEl.textContent = "Command failed — server likely outdated (need 0.3.6+)";
           statusEl.className = "status error";
           return;
         }
@@ -378,11 +378,11 @@
         append(
           "system",
           aborted
-            ? "Timed out after 45s — TradingView/learn should answer instantly on 0.3.4. " + RESTART_HINT
+            ? "Timed out after 45s — TradingView/learn should answer instantly on 0.3.6. " + RESTART_HINT
             : `Request failed: ${e && e.message ? e.message : e}`
         );
         statusEl.textContent = aborted
-          ? "Timed out — restart uvicorn on 0.3.4"
+          ? "Timed out — restart uvicorn on 0.3.6"
           : "Command failed — is uvicorn running?";
         statusEl.className = "status error";
       } finally {
@@ -512,7 +512,7 @@
           `shared_learnings=${data.shared_local_learnings === true} · ` +
           (ok
             ? "ready (local learnings for all bots)"
-            : "need 0.3.4+ — stop uvicorn, git pull origin main, start again, hard-refresh");
+            : "need 0.3.6+ — stop uvicorn, git pull origin main, start again, hard-refresh");
         el.style.color = ok ? "#047857" : "#b91c1c";
         if (!ok) {
           append("system", RESTART_HINT);

@@ -204,9 +204,20 @@ class VoiceAssistant:
             progress.fail(f"{type(exc).__name__}: {exc}")
             response = (
                 "I hit an error while handling that request "
-                f"({type(exc).__name__}: {exc}). "
-                "If this needs the web, type: yes approved  then ask again."
+                f"({type(exc).__name__}: {exc})."
             )
+            err_l = str(exc).lower()
+            if "ollama" in err_l or "11434" in err_l:
+                response += (
+                    " Start Ollama in another Terminal (`ollama serve`), "
+                    "then `ollama pull qwen2.5:1.5b`, and ask again. "
+                    "News/current-affairs can still work via web search after "
+                    "internet is approved — you do not need Ollama for that path on 0.3.5+."
+                )
+            elif "internet" in err_l or "permission" in err_l:
+                response += " If this needs the web, type: yes approved — then ask again."
+            else:
+                response += " Try again, or ask a different question."
             route_reason = f"handle_command error: {type(exc).__name__}"
         finally:
             db.close()
