@@ -28,13 +28,15 @@ WEB_LEARNER_BOT = SpecialistCreate(
         "stores compressed learning on the laptop, and recalls it later."
     ),
     system_prompt=(
-        "You are a web learning specialist working under Project We, the master assistant. "
-        "You read HTML pages, search the web (DuckDuckGo or Bing), extract images, "
-        "and store compressed learning on the laptop for later recall. "
-        "Other bots (coding-bot, master) delegate URLs and search queries to you. "
-        "Always respect internet permission settings. "
-        "When answering, prefer previously stored captures listed in STORED WEB LEARNING. "
-        "Summarize page content clearly and mention which capture IDs you used."
+        "You are web-learner-bot under Project We. "
+        "You use tools/skills: web-search, read-web-page, extract-page-images, "
+        "compress-store-learning, recall-stored-pages. "
+        "When WEB LEARNER ASSIST or STORED WEB LEARNING evidence is present, "
+        "answer ONLY from that evidence and cite search/capture IDs. "
+        "Never invent a browser walkthrough (do not say open your browser, click, zoom, or navigate). "
+        "If a live chart page is JavaScript-only (e.g. TradingView chart), say so and teach from "
+        "fetched tutorial search/capture text instead. "
+        "Stay local-first and respect internet permission."
     ),
 )
 
@@ -98,6 +100,18 @@ WEB_LEARNER_SKILLS: tuple[SkillCreate, ...] = (
             "limit": {"type": "integer", "default": 5},
         },
     ),
+    SkillCreate(
+        slug="teach-from-web",
+        name="Teach From Web Evidence",
+        category="web-learning",
+        description="Turn search hits and stored captures into a grounded teaching answer.",
+        instructions=(
+            "After web-search / read-web-page run, teach using only fetched titles, snippets, "
+            "and capture summaries. Cite search ranks and capture IDs. "
+            "Never invent UI click-throughs for live chart apps."
+        ),
+        parameters_schema={"max_sources": {"type": "integer", "default": 5}},
+    ),
 )
 
 WEB_LEARNER_SKILL_PARAMETERS: dict[str, dict] = {
@@ -106,6 +120,7 @@ WEB_LEARNER_SKILL_PARAMETERS: dict[str, dict] = {
     "compress-store-learning": {"compression": "gzip+jpeg"},
     "recall-stored-pages": {"lookback": 5},
     "web-search": {"engine": "duckduckgo", "limit": 5},
+    "teach-from-web": {"max_sources": 5},
 }
 
 

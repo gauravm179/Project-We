@@ -255,12 +255,62 @@ class SpecialistService:
             if stored:
                 full_prompt += "\n\n--- STORED WEB LEARNING ---\n" + stored
 
-        assistant_text = await provider.generate(
-            user_message,
-            memory_context=memory_context,
-            system_prompt=full_prompt,
-            specialist_slug=slug,
-        )
+        # Prefer grounded skill output over small-model hallucinated "open your browser" tutorials.
+        if (
+            slug == "web-learner-bot"
+            and isinstance(web_assist, WebAssistResult)
+            and web_assist.context
+        ):
+            from app.web_learning.intent import is_learn_intent
+
+            grounded = self._web_learning.compose_grounded_skill_reply(user_message, web_assist)
+            if is_learn_intent(user_message):
+                # Learning asks must stay evidence-based; small local models invent browser tours.
+                assistant_text = grounded
+            else:
+                polish_prompt = (
+                    full_prompt
+                    + "\n\nCRITICAL RULES:\n"
+                    "- You already ran web skills. Summarize ONLY from the evidence packet.\n"
+                    "- NEVER say ‘open your browser’, ‘navigate to’, or invent UI click steps.\n"
+                    "- Cite search numbers and capture IDs from the packet.\n"
+                )
+                user_for_model = (
+                    f"User question:\n{user_message}\n\n"
+                    f"Evidence packet from web-learner skills:\n{web_assist.context}\n\n"
+                    f"Grounded draft (keep these facts):\n{grounded}\n\n"
+                    "Rewrite into a clear answer. Keep capture/search citations."
+                )
+                try:
+                    polished = await provider.generate(
+                        user_for_model,
+                        memory_context=memory_context,
+                        system_prompt=polish_prompt,
+                        specialist_slug=slug,
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("Web-learner polish failed, using grounded reply: %s", exc)
+                    polished = ""
+
+                bad_markers = (
+                    "open your browser",
+                    "navigate to the following url",
+                    "step 1: visit",
+                    "once you're on the page",
+                    "echo mode",
+                )
+                polished_l = (polished or "").lower()
+                if not polished.strip() or any(m in polished_l for m in bad_markers):
+                    assistant_text = grounded
+                else:
+                    assistant_text = polished
+        else:
+            assistant_text = await provider.generate(
+                user_message,
+                memory_context=memory_context,
+                system_prompt=full_prompt,
+                specialist_slug=slug,
+            )
 
         db.add(SpecialistMessage(specialist_id=row.id, role="assistant", content=assistant_text))
         db.commit()
