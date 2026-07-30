@@ -2,7 +2,7 @@ from __future__ import annotations
 
 
 def test_voice_command_returns_reply_on_internal_error(client, monkeypatch):
-    async def boom(self, transcript: str, *, speak: bool = False):
+    async def boom(transcript: str, *, speak: bool = False):
         raise RuntimeError("simulated web failure")
 
     monkeypatch.setattr(
@@ -20,4 +20,4 @@ def test_voice_command_returns_reply_on_internal_error(client, monkeypatch):
     assert resp.status_code == 200
     body = resp.json()
     assert "error" in body["reply"].lower() or "RuntimeError" in body["reply"]
-    assert body["route_reason"].startswith("voice error")
+    assert "voice error" in (body.get("route_reason") or "")

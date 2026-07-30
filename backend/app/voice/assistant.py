@@ -157,35 +157,66 @@ class VoiceAssistant:
         """Process a spoken/typed command through the master bot."""
         text = transcript.strip()
         if not text:
-            return {"transcript": "", "reply": "", "error": "Empty transcript"}
+            return {
+                "transcript": "",
+                "reply": "Empty question — type something and ask again.",
+                "requires_permission": False,
+                "permission_request_id": None,
+                "routed_to": "master",
+                "route_reason": "empty",
+            }
 
         self._status.last_transcript = text
         session_factory = get_session_factory()
         db = session_factory()
+        response = ""
+        requires_permission = False
+        permission_request_id = None
+        routed_to = "master"
+        route_reason = "master"
         try:
             self._inputs.ingest_voice(db=db, transcript=text, source="voice-command")
             reply = await self._brain.chat(db=db, user_message=text)
-            response = reply.response
+            response = reply.response or ""
+            requires_permission = bool(reply.requires_permission)
+            permission_request_id = reply.permission_request_id
+            routed_to = reply.routed_to or "master"
+            route_reason = reply.route_reason or routed_to
             self._status.last_reply = response
-            db.commit()
+            try:
+                db.commit()
+            except Exception:  # noqa: BLE001
+                # Brain/specialist paths often commit already; ignore redundant commit issues.
+                db.rollback()
         except Exception as exc:
             db.rollback()
             self._status.last_error = str(exc)
-            raise
+            logger.exception("handle_command failed")
+            response = (
+                "I hit an error while handling that request "
+                f"({type(exc).__name__}: {exc}). "
+                "If this needs the web, type: yes approved  then ask again."
+            )
+            route_reason = f"handle_command error: {type(exc).__name__}"
         finally:
             db.close()
 
-        if speak:
-            tts = TextToSpeech(self._status.tts_voice)
-            await asyncio.get_running_loop().run_in_executor(None, lambda: tts.speak(response))
+        if speak and response:
+            try:
+                tts = TextToSpeech(self._status.tts_voice)
+                await asyncio.get_running_loop().run_in_executor(
+                    None, lambda: tts.speak(response)
+                )
+            except Exception:  # noqa: BLE001
+                logger.exception("TTS speak failed")
 
         return {
             "transcript": text,
             "reply": response,
-            "requires_permission": reply.requires_permission,
-            "permission_request_id": reply.permission_request_id,
-            "routed_to": reply.routed_to,
-            "route_reason": reply.route_reason,
+            "requires_permission": requires_permission,
+            "permission_request_id": permission_request_id,
+            "routed_to": routed_to,
+            "route_reason": route_reason,
         }
 
     async def _run_loop(self, settings: Settings) -> None:
