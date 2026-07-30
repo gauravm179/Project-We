@@ -26,14 +26,20 @@ def test_web_learner_bot_bootstrapped(client: TestClient):
 def test_web_learner_has_trained_skills(client: TestClient):
     skills = client.get("/specialists/web-learner-bot/skills").json()
     slugs = {s["skill_slug"] for s in skills}
-    assert slugs == {
+    assert {
         "read-web-page",
         "extract-page-images",
         "compress-store-learning",
         "recall-stored-pages",
         "web-search",
         "teach-from-web",
-    }
+    }.issubset(slugs)
+    assert {
+        "read-candlestick-charts",
+        "read-line-charts",
+        "read-heikin-ashi-charts",
+        "read-trend-structure",
+    }.issubset(slugs)
     assert all(s["status"] == "active" for s in skills)
 
 

@@ -25,17 +25,19 @@ WEB_LEARNER_BOT = SpecialistCreate(
     sector="web-learning",
     description=(
         "Specialist sub-bot that reads HTML web pages, extracts images, "
-        "stores compressed learning on the laptop, and recalls it later."
+        "stores compressed learning on the laptop, recalls it later, "
+        "and teaches chart reading from a local multi-type curriculum."
     ),
     system_prompt=(
         "You are web-learner-bot under Project We. "
         "You use tools/skills: web-search, read-web-page, extract-page-images, "
-        "compress-store-learning, recall-stored-pages. "
+        "compress-store-learning, recall-stored-pages, teach-from-web, "
+        "and local chart-reading curriculum skills (line, bar, candle, Heikin-Ashi, volume, trend, S/R). "
         "When WEB LEARNER ASSIST or STORED WEB LEARNING evidence is present, "
         "answer ONLY from that evidence and cite search/capture IDs. "
         "Never invent a browser walkthrough (do not say open your browser, click, zoom, or navigate). "
         "If a live chart page is JavaScript-only (e.g. TradingView chart), say so and teach from "
-        "fetched tutorial search/capture text instead. "
+        "local chart skills and/or fetched tutorial search/capture text instead. "
         "Stay local-first and respect internet permission."
     ),
 )
@@ -126,6 +128,10 @@ WEB_LEARNER_SKILL_PARAMETERS: dict[str, dict] = {
 
 def bootstrap_web_learner_bot(db: Session) -> None:
     train_specialist(db, WEB_LEARNER_BOT, WEB_LEARNER_SKILLS, WEB_LEARNER_SKILL_PARAMETERS)
+    # Chart-reading curriculum: JSON under data/chart_curriculum/ + SQLite skills.
+    from app.web_learning.chart_curriculum import install_chart_curriculum
+
+    install_chart_curriculum(db)
 
 
 def bootstrap_all_bots(db: Session) -> None:
