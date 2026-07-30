@@ -157,3 +157,26 @@ def test_voice_yes_approves_pending_internet(
     data = approved.json()
     assert data.get("requires_permission") is False
     assert "approved" in data["reply"].lower() or "page" in data["reply"].lower() or "web" in data["reply"].lower()
+
+
+def test_yes_when_already_approved_asks_again(client: TestClient):
+    # Seed an approved internet permission with no pending.
+    created = client.post(
+        "/permissions",
+        json={"capability": "internet", "reason": "old chart ask"},
+    ).json()
+    client.post(f"/permissions/{created['id']}/decision", json={"approve": True})
+
+    # Leave an old web ask in history that should NOT be auto-retried.
+    client.post(
+        "/chat",
+        json={"message": "https://www.tradingview.com/chart/. learn how to read trade charts"},
+    )
+
+    again = client.post("/chat", json={"message": "yes approved"})
+    assert again.status_code == 200
+    text = again.json()["response"].lower()
+    assert "already approved" in text
+    assert "ask" in text
+    assert "candlestick" not in text
+    assert "alchemymarkets" not in text

@@ -14,7 +14,7 @@ DEFAULT_DB_PATH = DATA_DIR / "project_we.db"
 @dataclass(frozen=True)
 class Settings:
     app_name: str = "Project We"
-    app_version: str = "0.3.4"
+    app_version: str = "0.3.6"
     provider: str = "echo"
     database_url: str = f"sqlite:///{DEFAULT_DB_PATH}"
     ollama_base_url: str = "http://127.0.0.1:11434"

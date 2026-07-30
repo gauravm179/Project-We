@@ -471,11 +471,11 @@ class SpecialistService:
             and isinstance(web_assist, WebAssistResult)
             and web_assist.context
         ):
-            from app.web_learning.intent import is_learn_intent
+            from app.web_learning.intent import is_learn_intent, is_news_ask
 
             grounded = self._web_learning.compose_grounded_skill_reply(user_message, web_assist)
-            if is_learn_intent(user_message):
-                # Learning asks must stay evidence-based; small local models invent browser tours.
+            if is_learn_intent(user_message) or is_news_ask(user_message):
+                # News/learn asks stay evidence-based; skip Ollama so offline models don't block.
                 from app.progress import progress
 
                 progress.step("teach-from-web", "Building grounded skill reply (no Ollama)")

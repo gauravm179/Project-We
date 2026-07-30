@@ -39,6 +39,9 @@ class BrainService:
         db.flush()
 
         self._memory_service.extract_and_store(db=db, message=user_message)
+        # Persist the user turn before model/web work so a later Ollama crash
+        # (and voice rollback) cannot erase it from history.
+        db.commit()
 
         if is_shared_learning_policy_ask(user_message):
             result = self._local_learnings.enable_for_all_bots(db)
@@ -104,38 +107,29 @@ class BrainService:
         approved = self._policy_service.approve_all_pending(db, "internet")
         retry_message = None
         if approved:
+            # Only retry the ask tied to the permission we just granted — never an older chart ask.
             retry_message = self._policy_service.message_from_permission_reason(
                 approved[-1].reason
             )
-        if not retry_message:
-            retry_message = self._find_retry_message_from_history(db)
 
         if not approved and self._policy_service.has_approved_capability(db, "internet"):
-            # Already approved earlier — still try to continue the last web ask.
-            if retry_message:
-                note = (
-                    "Internet access was already approved. "
-                    f"Continuing with your earlier request…"
-                )
-                db.add(ChatMessage(role="assistant", content=note))
-                db.flush()
-                return await self._process_user_message(db, retry_message)
+            # Already approved — do not dig up unrelated older web asks from history.
             text = (
                 "Internet access is already approved. "
-                "Send the URL or question again and I will use the web learner."
+                "Ask your question again (e.g. “show me current affairs” or paste a URL)."
             )
             db.add(ChatMessage(role="assistant", content=text))
             db.commit()
             return ChatReply(
                 response=text,
                 routed_to="master",
-                route_reason="internet already approved",
+                route_reason="internet already approved — ask again",
             )
 
         if not approved:
             text = (
                 "I did not find a pending internet request. "
-                "Ask again with a URL or ‘search for …’, then say yes to approve."
+                "Ask again with a URL or ‘search for …’ / ‘current affairs’, then say yes to approve."
             )
             db.add(ChatMessage(role="assistant", content=text))
             db.commit()
@@ -176,6 +170,7 @@ class BrainService:
         return reply
 
     def _find_retry_message_from_history(self, db: Session) -> str | None:
+        """Prefer the most recent user ask that needs the web (skip yes/no replies)."""
         rows = db.scalars(
             select(ChatMessage).order_by(ChatMessage.id.desc()).limit(30)
         ).all()
