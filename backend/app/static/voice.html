@@ -113,7 +113,8 @@
 
       <div class="hint">
         <strong>Use this first:</strong> click <em>Start listening</em>, allow the mic, then ask a question.
-        Do <strong>not</strong> use wake-word unless you installed <code>pip install -e '.[voice]'</code>.
+        Browser speech needs <strong>internet</strong> (Chrome → Google). If you see <em>network</em> error, type below instead.
+        Wake-word is optional and needs Python 3.12 packages.
       </div>
       <div id="wake-warn" class="warn">
         Wake-word packages are not installed. That is OK — browser mic and the text box below still work.
@@ -284,8 +285,31 @@
         if (transcript) sendCommand(transcript);
       };
       recognition.onerror = (event) => {
-        setStatus(`Mic error: ${event.error}`, "error");
-        append("system", `Microphone error: ${event.error}. You can still type a question below.`);
+        const code = event.error || "unknown";
+        if (code === "network") {
+          setStatus(
+            "Browser speech needs internet (Chrome uses Google STT). Check Wi‑Fi, or type your question below.",
+            "error"
+          );
+          append(
+            "system",
+            "Mic error: network — Chrome’s speech recognition talks to Google’s servers. " +
+              "If you’re offline or blocked, use the text box and click Ask master bot. " +
+              "Or try Microsoft Edge with internet on."
+          );
+          return;
+        }
+        if (code === "not-allowed" || code === "service-not-allowed") {
+          setStatus("Microphone permission blocked — allow mic for this site in browser settings.", "error");
+          append("system", "Allow microphone for http://127.0.0.1:8000 then try Start listening again.");
+          return;
+        }
+        if (code === "no-speech") {
+          setStatus("No speech heard — click Start listening and speak clearly.", "error");
+          return;
+        }
+        setStatus(`Mic error: ${code}`, "error");
+        append("system", `Microphone error: ${code}. You can still type a question below.`);
       };
       recognition.onend = () => {
         micEl.classList.remove("active");
