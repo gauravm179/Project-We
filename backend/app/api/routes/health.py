@@ -22,6 +22,11 @@ async def health() -> dict[str, object]:
     provider_info: dict[str, object] = {
         "provider": settings.provider,
         "model": settings.ollama_model if settings.provider == "ollama" else "echo",
+        "chat_model": settings.ollama_chat_model if settings.provider == "ollama" else "echo",
+        "tech_model": settings.ollama_tech_model if settings.provider == "ollama" else "echo",
+        "auto_route_models": (
+            settings.ollama_auto_route_models if settings.provider == "ollama" else False
+        ),
         "reasoning": settings.ollama_reasoning if settings.provider == "ollama" else False,
     }
 

@@ -7,6 +7,8 @@ class EchoProvider(AIProvider):
         user_message: str,
         memory_context: str | None = None,
         system_prompt: str | None = None,
+        *,
+        specialist_slug: str | None = None,
     ) -> str:
         """Deterministic stub used for tests when Ollama/Llama is not configured."""
         # Main-bot path (no specialist prompt): keep simple for unit tests.

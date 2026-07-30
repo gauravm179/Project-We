@@ -259,6 +259,7 @@ class SpecialistService:
             user_message,
             memory_context=memory_context,
             system_prompt=full_prompt,
+            specialist_slug=slug,
         )
 
         db.add(SpecialistMessage(specialist_id=row.id, role="assistant", content=assistant_text))

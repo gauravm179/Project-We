@@ -18,12 +18,15 @@ class Settings:
     provider: str = "echo"
     database_url: str = f"sqlite:///{DEFAULT_DB_PATH}"
     ollama_base_url: str = "http://127.0.0.1:11434"
-    ollama_model: str = "llama3.2"
+    ollama_model: str = "qwen2.5:1.5b"
+    ollama_chat_model: str = "qwen2.5:1.5b"
+    ollama_tech_model: str = "deepseek-r1:8b"
     ollama_timeout_seconds: float = 120.0
     ollama_temperature: float = 0.2
     ollama_reasoning: bool = True
     ollama_keep_alive: str = "30m"
     ollama_num_predict: int | None = None
+    ollama_auto_route_models: bool = True
     strict_local_mode: bool = True
     internet_mode: str = "ask"
     web_search_engine: str = "duckduckgo"
@@ -41,7 +44,12 @@ def get_settings() -> Settings:
         provider=os.getenv("PROJECT_WE_PROVIDER", "echo").lower(),
         database_url=os.getenv("PROJECT_WE_DATABASE_URL", f"sqlite:///{DEFAULT_DB_PATH}"),
         ollama_base_url=os.getenv("PROJECT_WE_OLLAMA_BASE_URL", "http://127.0.0.1:11434"),
-        ollama_model=os.getenv("PROJECT_WE_OLLAMA_MODEL", "llama3.2"),
+        ollama_model=os.getenv("PROJECT_WE_OLLAMA_MODEL", "qwen2.5:1.5b"),
+        ollama_chat_model=os.getenv(
+            "PROJECT_WE_OLLAMA_CHAT_MODEL",
+            os.getenv("PROJECT_WE_OLLAMA_MODEL", "qwen2.5:1.5b"),
+        ),
+        ollama_tech_model=os.getenv("PROJECT_WE_OLLAMA_TECH_MODEL", "deepseek-r1:8b"),
         ollama_timeout_seconds=float(os.getenv("PROJECT_WE_OLLAMA_TIMEOUT_SECONDS", "120")),
         ollama_temperature=float(os.getenv("PROJECT_WE_OLLAMA_TEMPERATURE", "0.2")),
         ollama_reasoning=os.getenv("PROJECT_WE_OLLAMA_REASONING", "true").lower() == "true",
@@ -51,6 +59,10 @@ def get_settings() -> Settings:
             if os.getenv("PROJECT_WE_OLLAMA_NUM_PREDICT")
             else None
         ),
+        ollama_auto_route_models=os.getenv(
+            "PROJECT_WE_OLLAMA_AUTO_ROUTE_MODELS", "true"
+        ).lower()
+        == "true",
         strict_local_mode=os.getenv("PROJECT_WE_STRICT_LOCAL_MODE", "true").lower() == "true",
         internet_mode=os.getenv("PROJECT_WE_INTERNET_MODE", "ask").lower(),
         web_search_engine=os.getenv("PROJECT_WE_WEB_SEARCH_ENGINE", "duckduckgo").lower(),

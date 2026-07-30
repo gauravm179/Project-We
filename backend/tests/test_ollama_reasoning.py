@@ -39,6 +39,7 @@ def test_ollama_provider_builds_reasoning_prompt(monkeypatch):
         model="llama3.2",
         reasoning=True,
         temperature=0.2,
+        auto_route_models=False,
     )
     text = asyncio.run(
         provider.generate(
@@ -89,6 +90,7 @@ def test_ollama_fast_mode_limits_output(monkeypatch):
         reasoning=False,
         num_predict=128,
         keep_alive="30m",
+        auto_route_models=False,
     )
     text = asyncio.run(provider.generate("What is 2+2?"))
     assert text == "4"
@@ -96,6 +98,52 @@ def test_ollama_fast_mode_limits_output(monkeypatch):
     assert captured["json"]["options"]["num_predict"] == 128
     assert "fast local assistant" in captured["json"]["messages"][0]["content"].lower()
 
+
+def test_ollama_routes_chat_to_qwen_and_tech_to_deepseek(monkeypatch):
+    captured: list[dict] = []
+
+    class FakeResponse:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict:
+            return {"message": {"content": "ok"}}
+
+    class FakeClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return None
+
+        async def post(self, url, json):
+            captured.append(json)
+            return FakeResponse()
+
+    monkeypatch.setattr("app.brain.providers.ollama.httpx.AsyncClient", FakeClient)
+    provider = OllamaProvider(
+        base_url="http://127.0.0.1:11434",
+        model="qwen2.5:1.5b",
+        chat_model="qwen2.5:1.5b",
+        tech_model="deepseek-r1:8b",
+        auto_route_models=True,
+    )
+
+    asyncio.run(provider.generate("hey, how are you?"))
+    assert captured[-1]["model"] == "qwen2.5:1.5b"
+    assert "fast local assistant" in captured[-1]["messages"][0]["content"].lower()
+
+    asyncio.run(
+        provider.generate(
+            "debug this Python deadlock",
+            specialist_slug="coding-bot",
+        )
+    )
+    assert captured[-1]["model"] == "deepseek-r1:8b"
+    assert "Reason step by step" in captured[-1]["messages"][0]["content"]
 
 def test_ollama_falls_back_to_generate_on_chat_404(monkeypatch):
     calls: list[str] = []
@@ -140,7 +188,11 @@ def test_ollama_falls_back_to_generate_on_chat_404(monkeypatch):
             return FakeResponse(200, {"response": "fallback answer"})
 
     monkeypatch.setattr("app.brain.providers.ollama.httpx.AsyncClient", FakeClient)
-    provider = OllamaProvider(base_url="http://127.0.0.1:11434", model="llama3.2")
+    provider = OllamaProvider(
+        base_url="http://127.0.0.1:11434",
+        model="llama3.2",
+        auto_route_models=False,
+    )
     text = asyncio.run(provider.generate("hi"))
     assert text == "fallback answer"
     assert any(url.endswith("/api/chat") for url in calls)
@@ -168,7 +220,11 @@ def test_ollama_missing_model_message(monkeypatch):
             raise httpx.HTTPStatusError("error", request=request, response=response)
 
     monkeypatch.setattr("app.brain.providers.ollama.httpx.AsyncClient", FakeClient)
-    provider = OllamaProvider(base_url="http://127.0.0.1:11434", model="llama3.2")
+    provider = OllamaProvider(
+        base_url="http://127.0.0.1:11434",
+        model="llama3.2",
+        auto_route_models=False,
+    )
     try:
         asyncio.run(provider.generate("hi"))
         assert False, "expected RuntimeError"

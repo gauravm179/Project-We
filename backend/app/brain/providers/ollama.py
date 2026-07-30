@@ -1,8 +1,13 @@
 from __future__ import annotations
 
+import logging
+
 import httpx
 
+from app.brain.model_router import choose_model_tier
 from app.brain.providers.base import AIProvider
+
+logger = logging.getLogger(__name__)
 
 _REASONING_SYSTEM = (
     "You are a careful local assistant. For questions and coding tasks:\n"
@@ -26,29 +31,64 @@ class OllamaProvider(AIProvider):
         base_url: str,
         model: str,
         *,
+        chat_model: str | None = None,
+        tech_model: str | None = None,
         timeout_seconds: float = 120.0,
         temperature: float = 0.2,
         reasoning: bool = True,
         keep_alive: str = "30m",
         num_predict: int | None = None,
+        auto_route_models: bool = True,
     ) -> None:
         self._base_url = base_url.rstrip("/")
         self._model = model
+        self._chat_model = chat_model or model
+        self._tech_model = tech_model or model
         self._timeout_seconds = timeout_seconds
         self._temperature = temperature
         self._reasoning = reasoning
         self._keep_alive = keep_alive
         self._num_predict = num_predict
+        self._auto_route_models = auto_route_models
 
-    def _system_text(self, memory_context: str | None, system_prompt: str | None) -> str:
+    def _resolve_request(
+        self,
+        user_message: str,
+        *,
+        specialist_slug: str | None,
+    ) -> tuple[str, bool, int | None, str]:
+        """Return (model, reasoning, num_predict, tier_reason)."""
+        if not self._auto_route_models:
+            return self._model, self._reasoning, self._num_predict, "auto-route disabled"
+
+        choice = choose_model_tier(user_message, specialist_slug=specialist_slug)
+        if choice.tier == "tech":
+            # Deep technical: prefer DeepSeek with fuller reasoning.
+            num_predict = self._num_predict
+            if num_predict is None and not self._reasoning:
+                # User asked for fast defaults globally; still allow tech more room.
+                num_predict = 768
+            return self._tech_model, True, num_predict, choice.reason
+
+        # Conversation: prefer Qwen, keep replies short/fast.
+        num_predict = self._num_predict if self._num_predict is not None else 256
+        return self._chat_model, False, num_predict, choice.reason
+
+    def _system_text(
+        self,
+        memory_context: str | None,
+        system_prompt: str | None,
+        *,
+        reasoning: bool,
+    ) -> str:
         system_parts: list[str] = []
-        system_parts.append(_REASONING_SYSTEM if self._reasoning else _FAST_SYSTEM)
+        system_parts.append(_REASONING_SYSTEM if reasoning else _FAST_SYSTEM)
         if system_prompt:
             # Keep specialist prompts, but trim huge dumps in fast mode.
-            trimmed = system_prompt if self._reasoning else system_prompt[:1200]
+            trimmed = system_prompt if reasoning else system_prompt[:1200]
             system_parts.append(trimmed)
         if memory_context:
-            memory = memory_context if self._reasoning else memory_context[:800]
+            memory = memory_context if reasoning else memory_context[:800]
             system_parts.append(
                 "Use this local memory context when useful. "
                 "Do not claim internet access without explicit permission.\n"
@@ -56,11 +96,11 @@ class OllamaProvider(AIProvider):
             )
         return "\n\n".join(system_parts)
 
-    def _options(self) -> dict[str, float | int]:
+    def _options(self, *, num_predict: int | None, reasoning: bool) -> dict[str, float | int]:
         options: dict[str, float | int] = {"temperature": self._temperature}
-        if self._num_predict is not None:
-            options["num_predict"] = self._num_predict
-        elif not self._reasoning:
+        if num_predict is not None:
+            options["num_predict"] = num_predict
+        elif not reasoning:
             options["num_predict"] = 256
         return options
 
@@ -69,8 +109,22 @@ class OllamaProvider(AIProvider):
         user_message: str,
         memory_context: str | None = None,
         system_prompt: str | None = None,
+        *,
+        specialist_slug: str | None = None,
     ) -> str:
-        system_text = self._system_text(memory_context, system_prompt)
+        model, reasoning, num_predict, reason = self._resolve_request(
+            user_message, specialist_slug=specialist_slug
+        )
+        logger.info(
+            "Ollama model=%s tier_reason=%s specialist=%s",
+            model,
+            reason,
+            specialist_slug or "master",
+        )
+
+        system_text = self._system_text(
+            memory_context, system_prompt, reasoning=reasoning
+        )
         messages = []
         if system_text:
             messages.append({"role": "system", "content": system_text})
@@ -79,29 +133,46 @@ class OllamaProvider(AIProvider):
         timeout = httpx.Timeout(self._timeout_seconds, connect=5.0)
         async with httpx.AsyncClient(timeout=timeout) as client:
             try:
-                return await self._chat(client, messages)
+                return await self._chat(
+                    client, messages, model=model, reasoning=reasoning, num_predict=num_predict
+                )
             except httpx.HTTPStatusError as exc:
                 if exc.response.status_code == 404:
                     try:
-                        return await self._generate(client, user_message, system_text)
+                        return await self._generate(
+                            client,
+                            user_message,
+                            system_text,
+                            model=model,
+                            reasoning=reasoning,
+                            num_predict=num_predict,
+                        )
                     except httpx.HTTPStatusError as gen_exc:
-                        raise RuntimeError(self._friendly_http_error(gen_exc)) from gen_exc
-                raise RuntimeError(self._friendly_http_error(exc)) from exc
+                        raise RuntimeError(self._friendly_http_error(gen_exc, model=model)) from gen_exc
+                raise RuntimeError(self._friendly_http_error(exc, model=model)) from exc
             except httpx.HTTPError as exc:
                 raise RuntimeError(
                     f"Cannot reach Ollama at {self._base_url}. "
-                    f"Start it with `ollama serve`, then `ollama pull {self._model}`."
+                    f"Start it with `ollama serve`, then `ollama pull {model}`."
                 ) from exc
 
-    async def _chat(self, client: httpx.AsyncClient, messages: list[dict[str, str]]) -> str:
+    async def _chat(
+        self,
+        client: httpx.AsyncClient,
+        messages: list[dict[str, str]],
+        *,
+        model: str,
+        reasoning: bool,
+        num_predict: int | None,
+    ) -> str:
         response = await client.post(
             f"{self._base_url}/api/chat",
             json={
-                "model": self._model,
+                "model": model,
                 "stream": False,
                 "keep_alive": self._keep_alive,
                 "messages": messages,
-                "options": self._options(),
+                "options": self._options(num_predict=num_predict, reasoning=reasoning),
             },
         )
         response.raise_for_status()
@@ -113,6 +184,10 @@ class OllamaProvider(AIProvider):
         client: httpx.AsyncClient,
         user_message: str,
         system_text: str,
+        *,
+        model: str,
+        reasoning: bool,
+        num_predict: int | None,
     ) -> str:
         prompt = user_message
         if system_text:
@@ -120,20 +195,21 @@ class OllamaProvider(AIProvider):
         response = await client.post(
             f"{self._base_url}/api/generate",
             json={
-                "model": self._model,
+                "model": model,
                 "stream": False,
                 "keep_alive": self._keep_alive,
                 "prompt": prompt,
                 "system": system_text or None,
-                "options": self._options(),
+                "options": self._options(num_predict=num_predict, reasoning=reasoning),
             },
         )
         response.raise_for_status()
         body = response.json()
         return (body.get("response") or "").strip() or "No response from Ollama."
 
-    def _friendly_http_error(self, exc: httpx.HTTPStatusError) -> str:
+    def _friendly_http_error(self, exc: httpx.HTTPStatusError, *, model: str | None = None) -> str:
         status = exc.response.status_code
+        used_model = model or self._model
         detail = ""
         try:
             detail = str(exc.response.json().get("error") or exc.response.text)
@@ -142,12 +218,20 @@ class OllamaProvider(AIProvider):
 
         if status == 404:
             return (
-                f"Ollama returned 404 for model '{self._model}'. "
-                f"Run: ollama pull {self._model} "
+                f"Ollama returned 404 for model '{used_model}'. "
+                f"Run: ollama pull {used_model} "
                 f"(check installed models with: ollama list). "
                 f"Details: {detail or 'not found'}"
             )
         return f"Ollama error {status}: {detail or str(exc)}"
+
+    def _model_available(self, configured: str, models: list[str]) -> bool:
+        return any(
+            name == configured
+            or name.startswith(f"{configured}:")
+            or name.startswith(configured)
+            for name in models
+        )
 
     async def healthcheck(self) -> dict[str, str | bool]:
         url = f"{self._base_url}/api/tags"
@@ -161,12 +245,12 @@ class OllamaProvider(AIProvider):
                 "ok": True,
                 "reachable": True,
                 "model_configured": self._model,
-                "model_available": any(
-                    name == self._model
-                    or name.startswith(f"{self._model}:")
-                    or name.startswith(self._model)
-                    for name in models
-                ),
+                "chat_model": self._chat_model,
+                "tech_model": self._tech_model,
+                "auto_route_models": self._auto_route_models,
+                "model_available": self._model_available(self._model, models),
+                "chat_model_available": self._model_available(self._chat_model, models),
+                "tech_model_available": self._model_available(self._tech_model, models),
                 "models": ", ".join(models) if models else "",
             }
         except Exception as exc:  # noqa: BLE001
@@ -174,6 +258,9 @@ class OllamaProvider(AIProvider):
                 "ok": False,
                 "reachable": False,
                 "model_configured": self._model,
+                "chat_model": self._chat_model,
+                "tech_model": self._tech_model,
+                "auto_route_models": self._auto_route_models,
                 "model_available": False,
                 "error": str(exc),
             }

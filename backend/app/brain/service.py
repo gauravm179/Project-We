@@ -120,7 +120,11 @@ class BrainService:
                     else f"--- WEB LEARNER ASSIST ---\n{assist.context}"
                 )
 
-        assistant_text = await provider.generate(user_message, memory_context=memory_context)
+        assistant_text = await provider.generate(
+            user_message,
+            memory_context=memory_context,
+            specialist_slug=None,
+        )
 
         assistant_record = ChatMessage(role="assistant", content=assistant_text)
         db.add(assistant_record)
