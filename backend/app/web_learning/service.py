@@ -31,6 +31,20 @@ WEB_LEARNING_DIR = DATA_DIR / "web_learning" / "captures"
 SEARCH_DIR = DATA_DIR / "web_learning" / "searches"
 WEB_LEARNER_SLUG = "web-learner-bot"
 _IMG_SRC_PATTERN = re.compile(r"""<img[^>]+src=["']([^"']+)["']""", re.IGNORECASE)
+_JS_HEAVY_HOST_PATTERN = re.compile(
+    r"(?:^|\.)(?:tradingview\.com|binance\.com|coinbase\.com)$",
+    re.IGNORECASE,
+)
+
+
+def _is_js_heavy_url(url: str) -> bool:
+    host = (urlparse(url).netloc or "").lower().removeprefix("www.")
+    path = (urlparse(url).path or "").lower()
+    if _JS_HEAVY_HOST_PATTERN.search(host):
+        return True
+    if "chart" in path and any(x in host for x in ("trading", "finance", "stock")):
+        return True
+    return False
 
 
 class _TextExtractor(HTMLParser):
@@ -212,35 +226,51 @@ class WebLearningService:
         if auto_search:
             query = extract_search_query(message)
             if query:
-                search = await self.search_web(db, query, limit=5)
+                try:
+                    search = await self.search_web(db, query, limit=5)
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("Web search failed for %r: %s", query, exc)
+                    parts.append(f"Search failed ({query}): {exc}")
+                    search = None
                 if isinstance(search, dict):
                     return search
-                search_id = search.search_id
-                parts.append(f"Search #{search.search_id} ({search.engine}): {search.query}")
-                for idx, result in enumerate(search.results, start=1):
-                    parts.append(
-                        f"{idx}. {result.title}\n   URL: {result.url}\n   {result.snippet}"
-                    )
+                if isinstance(search, SearchPersistResult):
+                    search_id = search.search_id
+                    parts.append(f"Search #{search.search_id} ({search.engine}): {search.query}")
+                    for idx, result in enumerate(search.results, start=1):
+                        parts.append(
+                            f"{idx}. {result.title}\n   URL: {result.url}\n   {result.snippet}"
+                        )
 
         if auto_capture_urls:
             for url in extract_urls(message)[:max_url_captures]:
                 if not is_valid_http_url(url):
                     continue
-                captured = await self.capture_url(
-                    db,
-                    WEB_LEARNER_SLUG,
-                    url,
-                    max_images=4,
-                    allow_without_permission=True,
-                )
+                if _is_js_heavy_url(url):
+                    parts.append(
+                        f"Skipped capture of interactive chart page ({url}). "
+                        "Live chart apps are JavaScript-only; use search results / tutorials instead."
+                    )
+                    continue
+                try:
+                    captured = await self.capture_url(
+                        db,
+                        WEB_LEARNER_SLUG,
+                        url,
+                        max_images=2,
+                        allow_without_permission=True,
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("Capture failed for %s: %s", url, exc)
+                    parts.append(f"Capture failed for {url}: {exc}")
+                    continue
                 if isinstance(captured, CaptureResult):
                     capture_ids.append(captured.capture_id)
                     note = ""
-                    if captured.text_chars < 400 or "tradingview.com" in captured.url.lower():
+                    if captured.text_chars < 400:
                         note = (
-                            "\nNote: this page is mostly interactive/JavaScript "
-                            "(live charts are not readable from static HTML). "
-                            "Prefer the search results above for learning how charts work."
+                            "\nNote: little readable text on this page "
+                            "(may be mostly interactive/JavaScript)."
                         )
                     parts.append(
                         f"Captured #{captured.capture_id}: {captured.title} ({captured.url})\n"
@@ -292,7 +322,7 @@ class WebLearningService:
                 "message": "Approve internet access, then capture again.",
             }
 
-        timeout = httpx.Timeout(20.0, connect=5.0)
+        timeout = httpx.Timeout(12.0, connect=4.0)
         async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
             response = await client.get(url, headers={"User-Agent": "ProjectWe-WebLearner/0.3"})
             response.raise_for_status()
