@@ -28,7 +28,7 @@ def test_health(client):
     assert response.status_code == 200
     body = response.json()
     assert body["name"] == "Project We"
-    assert body["version"] == "0.3.2"
+    assert body["version"] == "0.3.3"
     assert body["status"] == "running"
     assert body["sos_non_removable"] is True
     assert body["chart_fast_path"] is True

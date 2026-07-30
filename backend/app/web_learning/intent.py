@@ -68,44 +68,70 @@ def is_learn_intent(message: str) -> bool:
     return bool(_LEARN_INTENT_PATTERN.search(message or ""))
 
 
-def is_chart_learn_ask(message: str) -> bool:
-    """True for 'learn to read charts' / TradingView teaching asks."""
+_CHART_TOPIC_KEYS = (
+    "chart",
+    "charts",
+    "candlestick",
+    "candle",
+    "tradingview",
+    "trade chart",
+    "price chart",
+    "forex chart",
+    "stock chart",
+    "heikin",
+    "ohlc",
+)
+
+
+def is_chart_curriculum_ask(message: str) -> bool:
+    """True when the user wants a chart bot / all chart types / skills stored locally."""
     text = (message or "").lower()
-    if not is_learn_intent(text):
+    if not any(key in text for key in _CHART_TOPIC_KEYS):
         return False
-    return any(
-        key in text
-        for key in (
-            "chart",
-            "charts",
-            "candlestick",
-            "candle",
-            "tradingview",
-            "trade chart",
-            "price chart",
-            "forex chart",
-            "stock chart",
+    meta = any(
+        phrase in text
+        for phrase in (
+            "want a bot",
+            "i want a bot",
+            "create a bot",
+            "build a bot",
+            "make a bot",
+            "all types",
+            "all type",
+            "every chart",
+            "all chart",
+            "store all skill",
+            "store skill",
+            "skills locally",
+            "skill locally",
+            "on laptop",
+            "on my laptop",
+            "curriculum",
+            "install skill",
+            "save skill",
         )
     )
+    # Typo-tolerant: "lolcally" / "localy"
+    local_typo = bool(re.search(r"\blol?cally\b|\blocaly\b|\blocally\b", text))
+    store_skills = "skill" in text and (local_typo or "store" in text or "laptop" in text)
+    return meta or store_skills
+
+
+def is_chart_learn_ask(message: str) -> bool:
+    """True for 'learn to read charts' / TradingView teaching asks (not curriculum setup)."""
+    text = (message or "").lower()
+    if is_chart_curriculum_ask(text):
+        return False
+    if not is_learn_intent(text):
+        return False
+    return any(key in text for key in _CHART_TOPIC_KEYS)
 
 
 def local_chart_lesson(user_message: str = "") -> str:
-    """Instant chart-reading lesson with no DB, web, or Ollama (Mac-safe path)."""
-    return (
-        "I used the web-learner teach-from-web skill (local chart pack). "
-        "I am not opening TradingView’s live JS chart canvas — that page is not readable as HTML.\n\n"
-        "How to read trade charts:\n"
-        "1. Candlestick = one time period: open, high, low, close. "
-        "Green/white usually close > open; red/black usually close < open.\n"
-        "2. Wicks (shadows) show the extreme high/low rejected during that period.\n"
-        "3. Read left → right: higher highs/higher lows = uptrend; "
-        "lower highs/lower lows = downtrend; sideways = range.\n"
-        "4. Volume rising with a move often confirms interest; weak volume can mean a fragile move.\n"
-        "5. On TradingView you pick a symbol + timeframe, then add indicators — "
-        "ask me to search for a specific tutorial page if you want stored web notes later "
-        "(approve internet first).\n\n"
-        f"Your ask: {(user_message or '').strip()[:240]}"
-    )
+    """Instant multi-type chart lesson with no DB, web, or Ollama (Mac-safe path)."""
+    from app.web_learning.chart_curriculum import multi_chart_lesson
+
+    return multi_chart_lesson(user_message)
 
 
 def message_needs_web_assist(message: str) -> bool:

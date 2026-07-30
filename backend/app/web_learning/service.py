@@ -642,16 +642,11 @@ class WebLearningService:
             # even when live search/capture is empty or blocked.
             topic = user_message.lower()
             if not lessons or "chart" in topic or "tradingview" in topic or "trade" in topic:
+                from app.web_learning.chart_curriculum import CHART_LESSONS
+
                 lessons = [
-                    "Candlestick = one time period: open, high, low, close. "
-                    "Green/white usually close > open; red/black usually close < open.",
-                    "Wicks (shadows) show the extreme high/low rejected during that period.",
-                    "Read left → right for story: higher highs/higher lows = uptrend; "
-                    "lower highs/lower lows = downtrend; sideways = range.",
-                    "Volume rising with a move often confirms interest; weak volume can mean a fragile move.",
-                    "On TradingView you pick a symbol + timeframe, then add indicators — "
-                    "I cannot see the live JS canvas, so I teach chart reading from skills/evidence, "
-                    "not by pretending to click the website.",
+                    item["instructions"].split(". ")[0].rstrip(".") + "."
+                    for item in CHART_LESSONS
                 ]
             for i, lesson in enumerate(lessons, start=1):
                 parts.append(f"{i}. {lesson}")

@@ -12,7 +12,12 @@ from app.core.config import get_settings
 from app.db.models import Specialist, SpecialistMessage
 from app.learning.guidelines import GuidelinesService
 from app.learning.service import LearningService
-from app.web_learning.intent import is_chart_learn_ask, is_learn_intent, message_needs_web_assist
+from app.web_learning.intent import (
+    is_chart_curriculum_ask,
+    is_chart_learn_ask,
+    is_learn_intent,
+    message_needs_web_assist,
+)
 from app.web_learning.service import WebAssistResult, WebLearningService
 from app.memory.service import MemoryService
 from app.policy.service import PolicyService
@@ -123,6 +128,24 @@ class SpecialistService:
         )
         internet_approved = self._policy.has_approved_capability(db, "internet")
         skip_web_assist_early = slug == "coding-bot" and (needs_guidelines or wants_live_docs)
+
+        # Chart curriculum install: multi-type skills on disk + SQLite (no web).
+        if slug == "web-learner-bot" and is_chart_curriculum_ask(user_message):
+            from app.progress import progress
+            from app.web_learning.chart_curriculum import format_install_reply, install_chart_curriculum
+
+            progress.step("chart-curriculum", "Installing local multi-chart skills")
+            result = install_chart_curriculum(db)
+            assistant_text = format_install_reply(result)
+            db.add(
+                SpecialistMessage(specialist_id=row.id, role="assistant", content=assistant_text)
+            )
+            db.commit()
+            return SpecialistChatReply(
+                specialist_slug=row.slug,
+                specialist_name=row.name,
+                response=assistant_text,
+            )
 
         # Chart/TradingView teaching: answer from local skill pack immediately.
         # Live DuckDuckGo/TradingView fetches were hanging ~100s+ and dying with HTTP 500 on Mac.

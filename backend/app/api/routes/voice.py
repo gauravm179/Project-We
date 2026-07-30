@@ -14,7 +14,12 @@ from app.schemas.voice import (
     VoiceStatusResponse,
 )
 from app.voice.assistant import VoiceAssistant
-from app.web_learning.intent import is_chart_learn_ask, local_chart_lesson
+from app.web_learning.chart_curriculum import format_install_reply, install_chart_curriculum
+from app.web_learning.intent import (
+    is_chart_curriculum_ask,
+    is_chart_learn_ask,
+    local_chart_lesson,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -171,7 +176,35 @@ async def voice_command(request: Request) -> JSONResponse:
             )
         )
 
-    # Instant path: chart/TradingView teaching never touches DB/web/Ollama.
+    # Curriculum setup: install multi-chart skills locally (disk + SQLite).
+    if is_chart_curriculum_ask(transcript):
+        logger.info("voice/command chart-curriculum-install")
+        from app.db.session import get_session_factory
+
+        db = get_session_factory()()
+        try:
+            result = install_chart_curriculum(db)
+            reply = "[via Web Learner] " + format_install_reply(result)
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("chart curriculum install failed")
+            reply = (
+                "[via Web Learner] Could not finish installing the chart curriculum "
+                f"({type(exc).__name__}: {exc}). Check data/ permissions and try again."
+            )
+        finally:
+            db.close()
+        return _safe_json(
+            _ok_payload(
+                transcript=transcript,
+                reply=reply,
+                requires_permission=False,
+                permission_request_id=None,
+                routed_to="web-learner-bot",
+                route_reason="local chart curriculum install",
+            )
+        )
+
+    # Instant path: chart/TradingView teaching never touches web/Ollama.
     # This avoids Mac hangs that surfaced as HTTP 500 with no POST access log.
     if is_chart_learn_ask(transcript):
         logger.info("voice/command fast-chart-lesson")
