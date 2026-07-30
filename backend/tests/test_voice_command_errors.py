@@ -9,10 +9,11 @@ def test_voice_command_returns_reply_on_internal_error(client, monkeypatch):
         "app.api.routes.voice.voice_assistant.handle_command",
         boom,
     )
+    # Non-chart ask so we exercise handle_command error handling (chart asks are instant).
     resp = client.post(
         "/voice/command",
         json={
-            "transcript": "https://www.tradingview.com/chart/ learn how to read trade charts",
+            "transcript": "Remind me to buy milk tomorrow",
             "shared": True,
             "speak": False,
         },
