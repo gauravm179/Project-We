@@ -126,6 +126,9 @@
         <textarea id="ask-input" placeholder="Example: write a Python function to reverse a list" required></textarea>
         <div class="row">
           <button type="submit">Ask master bot</button>
+          <button type="button" id="approve-btn" class="secondary" disabled title="Approve pending internet access">
+            Approve internet
+          </button>
         </div>
       </form>
 
@@ -152,13 +155,26 @@
     const listenBtn = document.getElementById("listen-btn");
     const stopListenBtn = document.getElementById("stop-listen-btn");
     const wakeWarn = document.getElementById("wake-warn");
+    const approveBtn = document.getElementById("approve-btn");
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     let recognition = null;
     let depsReady = false;
+    let pendingPermissionId = null;
 
     function setStatus(text, kind = "") {
       statusEl.textContent = text;
       statusEl.className = `status ${kind}`.trim();
+    }
+
+    function setPendingPermission(id) {
+      pendingPermissionId = id || null;
+      approveBtn.disabled = !pendingPermissionId;
+      if (pendingPermissionId) {
+        append(
+          "system",
+          `Internet permission needed (#${pendingPermissionId}). Click Approve internet, or type yes / approved.`
+        );
+      }
     }
 
     function append(role, text) {
@@ -255,8 +271,19 @@
       if (data.routed_to && data.routed_to !== "master") {
         append("system", `Routed to ${data.routed_to}` + (data.route_reason ? ` (${data.route_reason})` : ""));
       }
+      if (data.requires_permission && data.permission_request_id) {
+        setPendingPermission(data.permission_request_id);
+      } else if (!data.requires_permission) {
+        pendingPermissionId = null;
+        approveBtn.disabled = true;
+      }
       speak(data.reply || "");
       setStatus(data.routed_to ? `Answered via ${data.routed_to}` : "Answered via master bot", "ok");
+    }
+
+    async function approveInternet() {
+      append("system", "Approving internet…");
+      await sendCommand("yes approved");
     }
 
     function startBrowserListening() {
@@ -323,6 +350,7 @@
 
     listenBtn.addEventListener("click", startBrowserListening);
     stopListenBtn.addEventListener("click", () => { if (recognition) recognition.stop(); });
+    approveBtn.addEventListener("click", approveInternet);
 
     document.getElementById("ask-form").addEventListener("submit", async (e) => {
       e.preventDefault();

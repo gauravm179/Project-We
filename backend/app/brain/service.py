@@ -27,13 +27,135 @@ class BrainService:
         self._specialists = SpecialistService()
 
     async def chat(self, db: Session, user_message: str) -> ChatReply:
-        settings = get_settings()
-
         user_record = ChatMessage(role="user", content=user_message)
         db.add(user_record)
         db.flush()
 
         self._memory_service.extract_and_store(db=db, message=user_message)
+
+        permission_reply = self._policy_service.parse_permission_reply(user_message)
+        if permission_reply is not None:
+            return await self._handle_permission_reply(
+                db, user_message=user_message, approve=permission_reply
+            )
+
+        return await self._process_user_message(db, user_message)
+
+    async def _handle_permission_reply(
+        self,
+        db: Session,
+        *,
+        user_message: str,
+        approve: bool,
+    ) -> ChatReply:
+        pending = self._policy_service.latest_pending(db, "internet")
+
+        if not approve:
+            rejected = self._policy_service.reject_all_pending(db, "internet")
+            if not rejected and not pending:
+                text = "There is no pending internet request to deny."
+            else:
+                text = "Okay — internet access denied. I will stay local-only."
+            db.add(ChatMessage(role="assistant", content=text))
+            db.commit()
+            return ChatReply(
+                response=text,
+                routed_to="master",
+                route_reason="permission rejected by chat",
+            )
+
+        # Approve
+        approved = self._policy_service.approve_all_pending(db, "internet")
+        retry_message = None
+        if approved:
+            retry_message = self._policy_service.message_from_permission_reason(
+                approved[-1].reason
+            )
+        if not retry_message:
+            retry_message = self._find_retry_message_from_history(db)
+
+        if not approved and self._policy_service.has_approved_capability(db, "internet"):
+            # Already approved earlier — still try to continue the last web ask.
+            if retry_message:
+                note = (
+                    "Internet access was already approved. "
+                    f"Continuing with your earlier request…"
+                )
+                db.add(ChatMessage(role="assistant", content=note))
+                db.flush()
+                return await self._process_user_message(db, retry_message)
+            text = (
+                "Internet access is already approved. "
+                "Send the URL or question again and I will use the web learner."
+            )
+            db.add(ChatMessage(role="assistant", content=text))
+            db.commit()
+            return ChatReply(
+                response=text,
+                routed_to="master",
+                route_reason="internet already approved",
+            )
+
+        if not approved:
+            text = (
+                "I did not find a pending internet request. "
+                "Ask again with a URL or ‘search for …’, then say yes to approve."
+            )
+            db.add(ChatMessage(role="assistant", content=text))
+            db.commit()
+            return ChatReply(
+                response=text,
+                routed_to="master",
+                route_reason="no pending permission",
+            )
+
+        if not retry_message:
+            text = (
+                "Internet access approved. "
+                "Send your URL or question again and I will continue."
+            )
+            db.add(ChatMessage(role="assistant", content=text))
+            db.commit()
+            return ChatReply(
+                response=text,
+                routed_to="master",
+                route_reason="permission approved, no retry message",
+            )
+
+        note = "Internet access approved. Continuing with your earlier request…"
+        db.add(ChatMessage(role="assistant", content=note))
+        db.flush()
+        logger.info("Retrying after internet approval: %s", retry_message[:120])
+        reply = await self._process_user_message(db, retry_message)
+        # Prefix so the voice UI makes the approval clear.
+        if not reply.response.startswith("Internet access approved"):
+            reply = ChatReply(
+                response=f"{note}\n\n{reply.response}",
+                requires_permission=reply.requires_permission,
+                required_capability=reply.required_capability,
+                permission_request_id=reply.permission_request_id,
+                routed_to=reply.routed_to,
+                route_reason=f"approved then: {reply.route_reason}",
+            )
+        return reply
+
+    def _find_retry_message_from_history(self, db: Session) -> str | None:
+        rows = db.scalars(
+            select(ChatMessage).order_by(ChatMessage.id.desc()).limit(30)
+        ).all()
+        for row in rows:
+            if row.role != "user":
+                continue
+            if self._policy_service.parse_permission_reply(row.content) is not None:
+                continue
+            if message_needs_web_assist(row.content) or self._policy_service.message_likely_needs_internet(
+                row.content
+            ):
+                return row.content
+        return None
+
+    async def _process_user_message(self, db: Session, user_message: str) -> ChatReply:
+        settings = get_settings()
 
         decision = route_message(user_message)
         if decision.target != "master":
@@ -59,26 +181,29 @@ class BrainService:
                     route_reason=decision.reason,
                 )
 
-            request = self._policy_service.create_permission_request(
-                db=db,
-                capability="internet",
-                reason=f"Need live internet data for: {user_message}",
-            )
-            assistant_text = (
-                "This request likely needs live internet data. "
-                "Please approve internet access to continue."
-            )
-            assistant_record = ChatMessage(role="assistant", content=assistant_text)
-            db.add(assistant_record)
-            db.commit()
-            return ChatReply(
-                response=assistant_text,
-                requires_permission=True,
-                required_capability="internet",
-                permission_request_id=request.id,
-                routed_to="master",
-                route_reason=decision.reason,
-            )
+            # If already approved, continue (do not ask again).
+            if not self._policy_service.has_approved_capability(db, "internet"):
+                request = self._policy_service.create_permission_request(
+                    db=db,
+                    capability="internet",
+                    reason=f"Need live internet data for: {user_message}",
+                )
+                assistant_text = (
+                    "This request likely needs live internet data. "
+                    "Please approve internet access to continue "
+                    "(reply yes / approved, or use the Approve button)."
+                )
+                assistant_record = ChatMessage(role="assistant", content=assistant_text)
+                db.add(assistant_record)
+                db.commit()
+                return ChatReply(
+                    response=assistant_text,
+                    requires_permission=True,
+                    required_capability="internet",
+                    permission_request_id=request.id,
+                    routed_to="master",
+                    route_reason=decision.reason,
+                )
 
         provider = build_provider(settings)
         memory_context = self._memory_service.recent_context(db=db)
@@ -89,8 +214,14 @@ class BrainService:
             )
             if isinstance(assist, WebAssistResult) and assist.requires_permission:
                 assistant_text = str(
-                    assist.message or "Internet permission required for web search or page reading."
+                    assist.message
+                    or "Internet permission required for web search or page reading. "
+                    "Reply yes / approved to allow it."
                 )
+                if "Reply yes" not in assistant_text and "Approve" in assistant_text:
+                    assistant_text = (
+                        f"{assistant_text} Reply yes / approved to allow it."
+                    )
                 db.add(ChatMessage(role="assistant", content=assistant_text))
                 db.commit()
                 return ChatReply(
@@ -102,7 +233,12 @@ class BrainService:
                     route_reason=decision.reason,
                 )
             if isinstance(assist, dict) and assist.get("requires_permission"):
-                assistant_text = str(assist.get("message", "Internet permission required."))
+                assistant_text = str(
+                    assist.get(
+                        "message",
+                        "Internet permission required. Reply yes / approved to allow it.",
+                    )
+                )
                 db.add(ChatMessage(role="assistant", content=assistant_text))
                 db.commit()
                 return ChatReply(
@@ -163,6 +299,8 @@ class BrainService:
         response = specialist_reply.response
         if not response.startswith("["):
             response = prefix + response
+        if specialist_reply.requires_permission and "Reply yes" not in response:
+            response = f"{response} Reply yes / approved to allow it."
 
         db.add(ChatMessage(role="assistant", content=response))
         db.commit()

@@ -107,7 +107,10 @@ class WebLearningService:
             "requires_permission": True,
             "required_capability": "internet",
             "permission_request_id": request.id,
-            "message": "Approve internet access so web-learner-bot can search or read pages.",
+            "message": (
+                "Approve internet access so web-learner-bot can search or read pages. "
+                "Reply yes / approved (or use the Approve button)."
+            ),
         }
 
     async def search_web(
@@ -232,9 +235,16 @@ class WebLearningService:
                 )
                 if isinstance(captured, CaptureResult):
                     capture_ids.append(captured.capture_id)
+                    note = ""
+                    if captured.text_chars < 400 or "tradingview.com" in captured.url.lower():
+                        note = (
+                            "\nNote: this page is mostly interactive/JavaScript "
+                            "(live charts are not readable from static HTML). "
+                            "Prefer the search results above for learning how charts work."
+                        )
                     parts.append(
                         f"Captured #{captured.capture_id}: {captured.title} ({captured.url})\n"
-                        f"Summary: {captured.summary}"
+                        f"Summary: {captured.summary}{note}"
                     )
 
         return WebAssistResult(
