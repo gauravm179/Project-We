@@ -35,6 +35,12 @@ class BrainService:
 
         permission_reply = self._policy_service.parse_permission_reply(user_message)
         if permission_reply is not None:
+            from app.progress import progress
+
+            progress.step(
+                "permission",
+                ("Approve" if permission_reply else "Reject") + " internet from chat",
+            )
             return await self._handle_permission_reply(
                 db, user_message=user_message, approve=permission_reply
             )
@@ -155,9 +161,12 @@ class BrainService:
         return None
 
     async def _process_user_message(self, db: Session, user_message: str) -> ChatReply:
+        from app.progress import progress
+
         settings = get_settings()
 
         decision = route_message(user_message)
+        progress.step("route", f"target={decision.target} ({decision.reason})")
         if decision.target != "master":
             return await self._delegate_to_specialist(
                 db, user_message=user_message, slug=decision.target, reason=decision.reason
@@ -261,6 +270,9 @@ class BrainService:
             memory_context=memory_context,
             specialist_slug=None,
         )
+        from app.progress import progress
+
+        progress.step("model-done", f"master reply chars={len(assistant_text)}")
 
         assistant_record = ChatMessage(role="assistant", content=assistant_text)
         db.add(assistant_record)
@@ -281,6 +293,9 @@ class BrainService:
         reason: str,
     ) -> ChatReply:
         logger.info("Master routing to %s (%s)", slug, reason)
+        from app.progress import progress
+
+        progress.step("specialist", f"Delegating to {slug}")
         specialist_reply = await self._specialists.chat(db, slug, user_message)
         if specialist_reply is None:
             fallback = (

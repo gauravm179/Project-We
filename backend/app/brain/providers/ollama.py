@@ -115,6 +115,12 @@ class OllamaProvider(AIProvider):
         model, reasoning, num_predict, reason = self._resolve_request(
             user_message, specialist_slug=specialist_slug
         )
+        from app.progress import progress
+
+        progress.step(
+            "ollama",
+            f"model={model} reason={reason} specialist={specialist_slug or 'master'}",
+        )
         logger.info(
             "Ollama model=%s tier_reason=%s specialist=%s",
             model,
@@ -138,6 +144,7 @@ class OllamaProvider(AIProvider):
                 )
             except httpx.HTTPStatusError as exc:
                 if exc.response.status_code == 404:
+                    progress.step("ollama-fallback", f"chat 404 → generate for {model}")
                     try:
                         return await self._generate(
                             client,
@@ -151,10 +158,14 @@ class OllamaProvider(AIProvider):
                         raise RuntimeError(self._friendly_http_error(gen_exc, model=model)) from gen_exc
                 raise RuntimeError(self._friendly_http_error(exc, model=model)) from exc
             except httpx.HTTPError as exc:
+                progress.step("ollama-error", f"unreachable: {exc}")
                 raise RuntimeError(
                     f"Cannot reach Ollama at {self._base_url}. "
                     f"Start it with `ollama serve`, then `ollama pull {model}`."
                 ) from exc
+            finally:
+                # Mark completion of the HTTP call attempt for UI timing.
+                progress.step("ollama-http-done", f"finished request to {model}")
 
     async def _chat(
         self,
