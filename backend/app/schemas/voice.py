@@ -24,7 +24,7 @@ class VoiceStatusResponse(BaseModel):
     stt_ready: bool = False
     deps: dict[str, bool] = Field(default_factory=dict)
     python_hint: str | None = None
-
+    progress: dict[str, object] = Field(default_factory=dict)
 
 class VoiceCommandRequest(BaseModel):
     transcript: str = Field(min_length=1, max_length=10_000)

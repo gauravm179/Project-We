@@ -125,6 +125,9 @@ class SpecialistService:
 
         web_assist: WebAssistResult | dict[str, object] | None = None
         if message_needs_web_assist(user_message) and not skip_web_assist_early:
+            from app.progress import progress
+
+            progress.step("web-assist", f"{slug} fetching search/pages")
             try:
                 web_assist = await self._web_learning.assist_for_message(
                     db,
@@ -133,6 +136,7 @@ class SpecialistService:
                 )
             except Exception as exc:  # noqa: BLE001
                 logger.exception("Web assist failed for %s", slug)
+                progress.step("web-assist-error", f"{type(exc).__name__}: {exc}")
                 if slug == "web-learner-bot":
                     from app.web_learning.intent import is_learn_intent
 
@@ -296,6 +300,9 @@ class SpecialistService:
             grounded = self._web_learning.compose_grounded_skill_reply(user_message, web_assist)
             if is_learn_intent(user_message):
                 # Learning asks must stay evidence-based; small local models invent browser tours.
+                from app.progress import progress
+
+                progress.step("teach-from-web", "Building grounded skill reply (no Ollama)")
                 assistant_text = grounded
             else:
                 polish_prompt = (

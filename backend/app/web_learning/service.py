@@ -211,12 +211,17 @@ class WebLearningService:
                 db,
                 f"{requesting_bot} needs web-learner-bot for: {message[:200]}",
             )
+            from app.progress import progress
+
+            progress.step("web-permission", "Internet approval required")
             return WebAssistResult(
                 context="",
                 requires_permission=True,
                 permission_request_id=int(blocked["permission_request_id"]),  # type: ignore[arg-type]
                 message=str(blocked["message"]),
             )
+
+        from app.progress import progress
 
         parts: list[str] = [
             f"WEB LEARNER ASSIST for {requesting_bot} (via web-learner-bot):"
@@ -227,16 +232,22 @@ class WebLearningService:
         if auto_search:
             query = extract_search_query(message)
             if query:
+                progress.step("web-search", f"Searching: {query[:120]}")
                 try:
                     search = await self.search_web(db, query, limit=5)
                 except Exception as exc:  # noqa: BLE001
                     logger.warning("Web search failed for %r: %s", query, exc)
+                    progress.step("web-search-error", f"{type(exc).__name__}: {exc}")
                     parts.append(f"Search failed ({query}): {exc}")
                     search = None
                 if isinstance(search, dict):
                     return search
                 if isinstance(search, SearchPersistResult):
                     search_id = search.search_id
+                    progress.step(
+                        "web-search-done",
+                        f"#{search.search_id} hits={search.result_count} engine={search.engine}",
+                    )
                     parts.append(f"Search #{search.search_id} ({search.engine}): {search.query}")
                     for idx, result in enumerate(search.results, start=1):
                         parts.append(
@@ -247,6 +258,7 @@ class WebLearningService:
                         for result in search.results[:3]:
                             if not is_valid_http_url(result.url) or _is_js_heavy_url(result.url):
                                 continue
+                            progress.step("web-capture", f"Reading {result.url[:120]}")
                             try:
                                 captured = await self.capture_url(
                                     db,
@@ -257,9 +269,14 @@ class WebLearningService:
                                 )
                             except Exception as exc:  # noqa: BLE001
                                 logger.warning("Learn-capture failed for %s: %s", result.url, exc)
+                                progress.step("web-capture-error", f"{type(exc).__name__}: {exc}")
                                 continue
                             if isinstance(captured, CaptureResult):
                                 capture_ids.append(captured.capture_id)
+                                progress.step(
+                                    "web-capture-done",
+                                    f"#{captured.capture_id} chars={captured.text_chars}",
+                                )
                                 parts.append(
                                     f"Captured #{captured.capture_id}: {captured.title} ({captured.url})\n"
                                     f"Summary: {captured.summary}"
@@ -275,7 +292,9 @@ class WebLearningService:
                         f"Skipped capture of interactive chart page ({url}). "
                         "Live chart apps are JavaScript-only; used search + tutorial pages instead."
                     )
+                    progress.step("web-skip", f"JS-heavy page skipped: {url[:100]}")
                     continue
+                progress.step("web-capture", f"Reading {url[:120]}")
                 try:
                     captured = await self.capture_url(
                         db,
@@ -286,10 +305,15 @@ class WebLearningService:
                     )
                 except Exception as exc:  # noqa: BLE001
                     logger.warning("Capture failed for %s: %s", url, exc)
+                    progress.step("web-capture-error", f"{type(exc).__name__}: {exc}")
                     parts.append(f"Capture failed for {url}: {exc}")
                     continue
                 if isinstance(captured, CaptureResult):
                     capture_ids.append(captured.capture_id)
+                    progress.step(
+                        "web-capture-done",
+                        f"#{captured.capture_id} chars={captured.text_chars}",
+                    )
                     note = ""
                     if captured.text_chars < 400:
                         note = (

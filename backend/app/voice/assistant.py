@@ -73,6 +73,8 @@ class VoiceAssistant:
         return report
 
     def status(self) -> dict:
+        from app.progress import progress
+
         data = asdict(self._status)
         data["deps_ready"] = self._check_deps_ready()
         data["stt_ready"] = self._check_stt_ready()
@@ -81,6 +83,7 @@ class VoiceAssistant:
             "Python 3.11 or 3.12 recommended for wake-word "
             "(onnxruntime/faster-whisper often missing on 3.14)."
         )
+        data["progress"] = progress.snapshot()
         return data
 
     async def start(self, settings: Settings) -> None:
@@ -155,6 +158,8 @@ class VoiceAssistant:
 
     async def handle_command(self, transcript: str, *, speak: bool = False) -> dict:
         """Process a spoken/typed command through the master bot."""
+        from app.progress import progress
+
         text = transcript.strip()
         if not text:
             return {
@@ -166,6 +171,7 @@ class VoiceAssistant:
                 "route_reason": "empty",
             }
 
+        progress.start(text)
         self._status.last_transcript = text
         session_factory = get_session_factory()
         db = session_factory()
@@ -175,7 +181,9 @@ class VoiceAssistant:
         routed_to = "master"
         route_reason = "master"
         try:
+            progress.step("ingest", "Saving voice/text input")
             self._inputs.ingest_voice(db=db, transcript=text, source="voice-command")
+            progress.step("brain", "Master bot routing / answering")
             reply = await self._brain.chat(db=db, user_message=text)
             response = reply.response or ""
             requires_permission = bool(reply.requires_permission)
@@ -188,10 +196,12 @@ class VoiceAssistant:
             except Exception:  # noqa: BLE001
                 # Brain/specialist paths often commit already; ignore redundant commit issues.
                 db.rollback()
+            progress.finish(f"routed={routed_to} reply_chars={len(response)}")
         except Exception as exc:
             db.rollback()
             self._status.last_error = str(exc)
             logger.exception("handle_command failed")
+            progress.fail(f"{type(exc).__name__}: {exc}")
             response = (
                 "I hit an error while handling that request "
                 f"({type(exc).__name__}: {exc}). "
@@ -203,6 +213,7 @@ class VoiceAssistant:
 
         if speak and response:
             try:
+                progress.step("tts", "Speaking reply")
                 tts = TextToSpeech(self._status.tts_voice)
                 await asyncio.get_running_loop().run_in_executor(
                     None, lambda: tts.speak(response)

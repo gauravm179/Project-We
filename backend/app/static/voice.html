@@ -120,6 +120,7 @@
         Wake-word packages are not installed. That is OK — browser mic and the text box below still work.
       </div>
       <div id="status" class="status">Checking voice status…</div>
+      <pre id="progress-log" class="hint" style="display:none; white-space:pre-wrap; max-height:180px; overflow:auto; font-size:0.82rem;"></pre>
 
       <h2 style="margin-top:18px">Or type your question</h2>
       <form id="ask-form">
@@ -157,21 +158,55 @@
     const wakeWarn = document.getElementById("wake-warn");
     const approveBtn = document.getElementById("approve-btn");
     const askSubmitBtn = document.querySelector("#ask-form button[type='submit']");
+    const progressLog = document.getElementById("progress-log");
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     let recognition = null;
     let depsReady = false;
     let pendingPermissionId = null;
     let commandInFlight = false;
     let statusPollTimer = null;
-    let progressTimer = null;
+    let progressPollTimer = null;
 
     function setStatus(text, kind = "") {
-      // Do not overwrite "Thinking…" progress with idle poll status.
-      if (commandInFlight && kind !== "error" && !String(text).toLowerCase().includes("working")) {
+      if (
+        commandInFlight &&
+        kind !== "error" &&
+        !String(text).toLowerCase().includes("working") &&
+        !String(text).includes("[")
+      ) {
         return;
       }
       statusEl.textContent = text;
       statusEl.className = `status ${kind}`.trim();
+    }
+
+    function renderProgress(progress) {
+      if (!progress || !progressLog) return;
+      const busy = !!progress.busy;
+      const elapsed = progress.elapsed_seconds != null ? progress.elapsed_seconds : "?";
+      const step = progress.step || "idle";
+      const detail = progress.detail || "";
+      if (busy || commandInFlight) {
+        statusEl.textContent = `Working… ${elapsed}s · [${step}] ${detail}`;
+        statusEl.className = "status ok";
+        const lines = Array.isArray(progress.steps) ? progress.steps.slice(-12) : [];
+        if (lines.length) {
+          progressLog.style.display = "block";
+          progressLog.textContent = lines.join("\n");
+          progressLog.scrollTop = progressLog.scrollHeight;
+        }
+      }
+    }
+
+    async function pollProgress() {
+      try {
+        const res = await fetch("/voice/status");
+        if (!res.ok) return;
+        const data = await res.json();
+        renderProgress(data.progress || {});
+      } catch (_) {
+        /* ignore transient poll errors while working */
+      }
     }
 
     function setPendingPermission(id) {
@@ -190,19 +225,15 @@
       if (askSubmitBtn) askSubmitBtn.disabled = busy;
       approveBtn.disabled = busy || !pendingPermissionId;
       listenBtn.disabled = busy;
+      clearInterval(progressPollTimer);
+      progressPollTimer = null;
       if (busy) {
-        let seconds = 0;
-        clearInterval(progressTimer);
-        progressTimer = setInterval(() => {
-          seconds += 5;
-          setStatus(
-            `Still working… ${seconds}s (web search / Ollama can take 30–90s on older Macs)`,
-            "ok"
-          );
-        }, 5000);
-      } else {
-        clearInterval(progressTimer);
-        progressTimer = null;
+        if (progressLog) {
+          progressLog.style.display = "block";
+          progressLog.textContent = "Starting… watch Terminal for PROGRESS lines too";
+        }
+        progressPollTimer = setInterval(pollProgress, 1000);
+        pollProgress();
       }
     }
 
