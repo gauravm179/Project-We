@@ -30,3 +30,5 @@ def test_chart_learn_returns_local_lesson_without_internet(client):
     assert "candlestick" in text or "open" in text
     assert "step 1: visit" not in text
     assert body.get("requires_permission") is False
+    assert body.get("route_reason") == "fast local chart lesson"
+    assert body.get("routed_to") == "web-learner-bot"

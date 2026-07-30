@@ -14,6 +14,7 @@ from app.schemas.voice import (
     VoiceStatusResponse,
 )
 from app.voice.assistant import VoiceAssistant
+from app.web_learning.intent import is_chart_learn_ask, local_chart_lesson
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +44,6 @@ def _ok_payload(**kwargs: object) -> dict[str, object]:
     """Build a VoiceCommandResponse dict without raising on odd values."""
     try:
         data = VoiceCommandResponse(**kwargs).model_dump()  # type: ignore[arg-type]
-        # Ensure JSON-safe primitives only.
         return {
             "transcript": str(data.get("transcript") or ""),
             "reply": str(data.get("reply") or ""),
@@ -70,7 +70,6 @@ def _ok_payload(**kwargs: object) -> dict[str, object]:
 def voice_status() -> JSONResponse:
     try:
         data = voice_assistant.status()
-        # Validate lightly; never 500 the status poll.
         return JSONResponse(VoiceStatusResponse(**data).model_dump())
     except Exception as exc:  # noqa: BLE001
         logger.exception("voice/status failed")
@@ -123,6 +122,7 @@ def voice_config(payload: VoiceConfigPatch) -> VoiceStatusResponse:
 @router.post("/command")
 async def voice_command(request: Request) -> JSONResponse:
     """Process a voice/text command. Always returns HTTP 200 with a chat reply."""
+    logger.info("voice/command ENTER path=%s", request.url.path)
     try:
         body = await request.json()
     except Exception as exc:  # noqa: BLE001
@@ -168,6 +168,22 @@ async def voice_command(request: Request) -> JSONResponse:
                 reply="Empty question — type something and ask again.",
                 routed_to="master",
                 route_reason="empty",
+            )
+        )
+
+    # Instant path: chart/TradingView teaching never touches DB/web/Ollama.
+    # This avoids Mac hangs that surfaced as HTTP 500 with no POST access log.
+    if is_chart_learn_ask(transcript):
+        logger.info("voice/command fast-chart-lesson")
+        reply = "[via Web Learner] " + local_chart_lesson(transcript)
+        return _safe_json(
+            _ok_payload(
+                transcript=transcript,
+                reply=reply,
+                requires_permission=False,
+                permission_request_id=None,
+                routed_to="web-learner-bot",
+                route_reason="fast local chart lesson",
             )
         )
 
