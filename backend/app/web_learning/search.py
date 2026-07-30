@@ -34,7 +34,7 @@ class WebSearchClient:
         self._engine = engine if engine in _SEARCH_ENGINES else "duckduckgo"
 
     async def search(self, query: str, *, limit: int = 5) -> list[SearchResult]:
-        timeout = httpx.Timeout(15.0, connect=5.0)
+        timeout = httpx.Timeout(8.0, connect=3.0)
         headers = {"User-Agent": "ProjectWe-WebLearner/0.3"}
 
         async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:

@@ -289,13 +289,14 @@
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             transcript: text,
-            shared: document.getElementById("shared").checked,
+            // Typed asks always share intent; mic checkbox is for microphone privacy only.
+            shared: true,
             speak: false,
           }),
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) {
-          const err = data.detail || "Voice command failed";
+          const err = data.detail || data.reply || `Voice command failed (HTTP ${res.status})`;
           append("system", typeof err === "string" ? err : JSON.stringify(err));
           statusEl.textContent = "Command failed";
           statusEl.className = "status error";

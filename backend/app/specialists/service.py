@@ -125,11 +125,41 @@ class SpecialistService:
 
         web_assist: WebAssistResult | dict[str, object] | None = None
         if message_needs_web_assist(user_message) and not skip_web_assist_early:
-            web_assist = await self._web_learning.assist_for_message(
-                db,
-                user_message,
-                requesting_bot=slug,
-            )
+            try:
+                web_assist = await self._web_learning.assist_for_message(
+                    db,
+                    user_message,
+                    requesting_bot=slug,
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.exception("Web assist failed for %s", slug)
+                if slug == "web-learner-bot":
+                    from app.web_learning.intent import is_learn_intent
+
+                    if is_learn_intent(user_message):
+                        fallback = self._web_learning.compose_grounded_skill_reply(
+                            user_message,
+                            WebAssistResult(
+                                context=(
+                                    "WEB LEARNER ASSIST:\n"
+                                    f"Search/capture failed: {type(exc).__name__}: {exc}"
+                                )
+                            ),
+                        )
+                        db.add(
+                            SpecialistMessage(
+                                specialist_id=row.id, role="assistant", content=fallback
+                            )
+                        )
+                        db.commit()
+                        return SpecialistChatReply(
+                            specialist_slug=row.slug,
+                            specialist_name=row.name,
+                            response=fallback,
+                        )
+                web_assist = WebAssistResult(
+                    context=f"WEB LEARNER ASSIST:\nSearch/capture failed: {exc}"
+                )
             if isinstance(web_assist, WebAssistResult) and web_assist.requires_permission:
                 assistant_text = str(
                     web_assist.message or "Internet permission required for web search or page reading."

@@ -242,12 +242,9 @@ class WebLearningService:
                         parts.append(
                             f"{idx}. {result.title}\n   URL: {result.url}\n   {result.snippet}"
                         )
-                    # Learning asks: capture top educational pages (skills: read + store).
+                    # Learning asks: capture one educational page (keep Mac asks fast).
                     if is_learn_intent(message) and auto_capture_urls:
-                        captured_from_search = 0
-                        for result in search.results:
-                            if captured_from_search >= 2:
-                                break
+                        for result in search.results[:3]:
                             if not is_valid_http_url(result.url) or _is_js_heavy_url(result.url):
                                 continue
                             try:
@@ -255,7 +252,7 @@ class WebLearningService:
                                     db,
                                     WEB_LEARNER_SLUG,
                                     result.url,
-                                    max_images=2,
+                                    max_images=1,
                                     allow_without_permission=True,
                                 )
                             except Exception as exc:  # noqa: BLE001
@@ -263,11 +260,11 @@ class WebLearningService:
                                 continue
                             if isinstance(captured, CaptureResult):
                                 capture_ids.append(captured.capture_id)
-                                captured_from_search += 1
                                 parts.append(
                                     f"Captured #{captured.capture_id}: {captured.title} ({captured.url})\n"
                                     f"Summary: {captured.summary}"
                                 )
+                                break
 
         if auto_capture_urls:
             for url in extract_urls(message)[:max_url_captures]:
@@ -349,7 +346,7 @@ class WebLearningService:
                 "message": "Approve internet access, then capture again.",
             }
 
-        timeout = httpx.Timeout(12.0, connect=4.0)
+        timeout = httpx.Timeout(8.0, connect=3.0)
         async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
             response = await client.get(url, headers={"User-Agent": "ProjectWe-WebLearner/0.3"})
             response.raise_for_status()
@@ -599,8 +596,7 @@ class WebLearningService:
 
         if is_learn_intent(user_message):
             parts.append(
-                "\nHow to read trade charts (from the fetched snippets above — "
-                "not from inventing a TradingView walkthrough):"
+                "\nHow to read trade charts (from fetched snippets / local chart skill):"
             )
             # Pull short teaching bullets only from snippet text we already have.
             snippet_blob = " ".join(search_lines + capture_lines).lower()
@@ -618,25 +614,35 @@ class WebLearningService:
                 lessons.append("Volume helps confirm whether a price move has participation behind it.")
             if any(w in snippet_blob for w in ("trend", "moving average", "ema", "sma")):
                 lessons.append("Trend tools (e.g. moving averages) help see direction without reacting to every tick.")
-            if not lessons:
-                lessons.append(
-                    "I could only rely on the titles/snippets listed above. "
-                    "Open those tutorial URLs (or ask me to capture a specific tutorial page) "
-                    "for deeper chart-reading detail."
-                )
+            # Always include a solid local lesson pack for chart/TradingView learn asks,
+            # even when live search/capture is empty or blocked.
+            topic = user_message.lower()
+            if not lessons or "chart" in topic or "tradingview" in topic or "trade" in topic:
+                lessons = [
+                    "Candlestick = one time period: open, high, low, close. "
+                    "Green/white usually close > open; red/black usually close < open.",
+                    "Wicks (shadows) show the extreme high/low rejected during that period.",
+                    "Read left → right for story: higher highs/higher lows = uptrend; "
+                    "lower highs/lower lows = downtrend; sideways = range.",
+                    "Volume rising with a move often confirms interest; weak volume can mean a fragile move.",
+                    "On TradingView you pick a symbol + timeframe, then add indicators — "
+                    "I cannot see the live JS canvas, so I teach chart reading from skills/evidence, "
+                    "not by pretending to click the website.",
+                ]
             for i, lesson in enumerate(lessons, start=1):
                 parts.append(f"{i}. {lesson}")
 
         if not search_lines and not capture_lines:
             parts.append(
-                "\nNo usable search hits or page text were returned. "
-                "Try: search for how to read candlestick charts"
+                "\nLive web evidence was thin or unavailable this run. "
+                "I still taught from the local chart-reading skill pack above. "
+                "After internet is approved, ask again to store tutorial pages locally."
             )
 
         parts.append(
             "\nI am not giving fake click-through steps for the live TradingView canvas — "
             "that chart UI is JavaScript and not readable as plain HTML. "
-            "Teaching above comes from search/capture skill evidence."
+            "Teaching above comes from search/capture skill evidence and/or local chart skill."
         )
         return "\n".join(parts)
 
