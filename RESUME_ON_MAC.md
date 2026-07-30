@@ -2,11 +2,14 @@
 
 All work is saved on GitHub **`main`** (also on `feature/v0.2-memory`).
 
-Last saved: quieter Terminal polls, faster chart/web asks, chat **yes/approved** internet retry, Qwen/DeepSeek routing.
+Last saved: **0.3.2** — TradingView/learn chart asks answer **instantly** from a local lesson (no web hang). `/voice/command` always returns HTTP 200 on this build. If Voice shows **HTTP 500**, you are still on an **old uvicorn process**.
 
-## Start (fast + dual models)
+## Start (kill old server first)
 
 ```bash
+# Stop ANY old uvicorn (Ctrl+C in its Terminal, or:)
+pkill -f 'uvicorn app.main:app' || true
+
 cd ~/Project-We
 git checkout main
 git pull origin main
@@ -22,17 +25,39 @@ export PROJECT_WE_OLLAMA_AUTO_ROUTE_MODELS=true
 export PROJECT_WE_OLLAMA_REASONING=false
 export PROJECT_WE_OLLAMA_NUM_PREDICT=256
 export PROJECT_WE_OLLAMA_KEEP_ALIVE=30m
-uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+
+# Prefer NO --reload so you always know which process is live
+uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
-Open **one** Voice tab only: http://127.0.0.1:8000/ui/voice.html  
-(Extra tabs spam `/voice/status` in Terminal.)
+Open **one** Voice tab: http://127.0.0.1:8000/ui/voice.html  
+Hard-refresh (Cmd+Shift+R). Stamp must say **Server 0.3.2** and `chart_fast_path=true`.
 
-After you ask a question, Terminal should show:
+Prove it:
+
+```bash
+curl -s http://127.0.0.1:8000/health | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d["version"], d.get("chart_fast_path"), d.get("voice_command_always_200"))'
+# Expect: 0.3.2 True True
+```
+
+## TradingView / “learn how to read trade charts”
+
+Paste something like:
+
+`https://www.tradingview.com/chart/. Can you go through website use the web bot and learn how to read trade charts`
+
+Expected:
+- Reply in **~1 second** with a candlestick lesson (`[via Web Learner]…`)
+- Terminal: `MIDDLEWARE POST /voice/command` then `voice/command fast-chart-lesson`
+- **Not** HTTP 500, and **not** a 100s DuckDuckGo hang
+
+The live TradingView JS chart canvas is not readable as HTML; the web-learner teaches from a local chart skill pack for this ask. Approve internet later if you want stored tutorial-page notes.
+
+## After you ask (non-chart)
+
+Terminal should show:
+`MIDDLEWARE POST /voice/command received`  
 `voice/command start: …`  
-Access log `POST /voice/command` appears only when the reply finishes (can take 30–90s for web + model).
-
-For TradingView: reply **yes approved** once for internet. The bot searches chart tutorials (it cannot read the live JS chart canvas).
 
 | Ask type | Model |
 |----------|--------|
@@ -42,9 +67,10 @@ For TradingView: reply **yes approved** once for internet. The bot searches char
 ## What was built
 
 - Master auto-routes to coding-bot / web-learner-bot
+- Chart/TradingView teach asks → instant local lesson (0.3.1+)
+- `/voice/command` soft-fails with HTTP 200 + reply text (0.3.1+)
 - Chat/voice “yes approved” grants internet and retries
-- Health Ollama check is cached (less Terminal noise)
-- Voice polls status every 60s, not health every 15s
+- Health exposes `chart_fast_path` + `voice_command_always_200` (0.3.2+)
 
 ## Quick health check
 
