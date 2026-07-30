@@ -22,6 +22,8 @@ class Settings:
     ollama_timeout_seconds: float = 120.0
     ollama_temperature: float = 0.2
     ollama_reasoning: bool = True
+    ollama_keep_alive: str = "30m"
+    ollama_num_predict: int | None = None
     strict_local_mode: bool = True
     internet_mode: str = "ask"
     web_search_engine: str = "duckduckgo"
@@ -43,6 +45,12 @@ def get_settings() -> Settings:
         ollama_timeout_seconds=float(os.getenv("PROJECT_WE_OLLAMA_TIMEOUT_SECONDS", "120")),
         ollama_temperature=float(os.getenv("PROJECT_WE_OLLAMA_TEMPERATURE", "0.2")),
         ollama_reasoning=os.getenv("PROJECT_WE_OLLAMA_REASONING", "true").lower() == "true",
+        ollama_keep_alive=os.getenv("PROJECT_WE_OLLAMA_KEEP_ALIVE", "30m"),
+        ollama_num_predict=(
+            int(os.environ["PROJECT_WE_OLLAMA_NUM_PREDICT"])
+            if os.getenv("PROJECT_WE_OLLAMA_NUM_PREDICT")
+            else None
+        ),
         strict_local_mode=os.getenv("PROJECT_WE_STRICT_LOCAL_MODE", "true").lower() == "true",
         internet_mode=os.getenv("PROJECT_WE_INTERNET_MODE", "ask").lower(),
         web_search_engine=os.getenv("PROJECT_WE_WEB_SEARCH_ENGINE", "duckduckgo").lower(),

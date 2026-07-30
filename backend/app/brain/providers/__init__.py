@@ -12,5 +12,7 @@ def build_provider(settings: Settings) -> AIProvider:
             timeout_seconds=settings.ollama_timeout_seconds,
             temperature=settings.ollama_temperature,
             reasoning=settings.ollama_reasoning,
+            keep_alive=settings.ollama_keep_alive,
+            num_predict=settings.ollama_num_predict,
         )
     return EchoProvider()

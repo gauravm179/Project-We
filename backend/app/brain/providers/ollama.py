@@ -13,6 +13,12 @@ _REASONING_SYSTEM = (
     "Stay local-first. Do not claim live internet access unless the user approved it."
 )
 
+_FAST_SYSTEM = (
+    "You are a fast local assistant. Reply briefly and directly. "
+    "Skip long reasoning unless the user asks for it. "
+    "Stay local-first."
+)
+
 
 class OllamaProvider(AIProvider):
     def __init__(
@@ -23,26 +29,40 @@ class OllamaProvider(AIProvider):
         timeout_seconds: float = 120.0,
         temperature: float = 0.2,
         reasoning: bool = True,
+        keep_alive: str = "30m",
+        num_predict: int | None = None,
     ) -> None:
         self._base_url = base_url.rstrip("/")
         self._model = model
         self._timeout_seconds = timeout_seconds
         self._temperature = temperature
         self._reasoning = reasoning
+        self._keep_alive = keep_alive
+        self._num_predict = num_predict
 
     def _system_text(self, memory_context: str | None, system_prompt: str | None) -> str:
         system_parts: list[str] = []
-        if self._reasoning:
-            system_parts.append(_REASONING_SYSTEM)
+        system_parts.append(_REASONING_SYSTEM if self._reasoning else _FAST_SYSTEM)
         if system_prompt:
-            system_parts.append(system_prompt)
+            # Keep specialist prompts, but trim huge dumps in fast mode.
+            trimmed = system_prompt if self._reasoning else system_prompt[:1200]
+            system_parts.append(trimmed)
         if memory_context:
+            memory = memory_context if self._reasoning else memory_context[:800]
             system_parts.append(
                 "Use this local memory context when useful. "
                 "Do not claim internet access without explicit permission.\n"
-                f"{memory_context}"
+                f"{memory}"
             )
         return "\n\n".join(system_parts)
+
+    def _options(self) -> dict[str, float | int]:
+        options: dict[str, float | int] = {"temperature": self._temperature}
+        if self._num_predict is not None:
+            options["num_predict"] = self._num_predict
+        elif not self._reasoning:
+            options["num_predict"] = 256
+        return options
 
     async def generate(
         self,
@@ -61,7 +81,6 @@ class OllamaProvider(AIProvider):
             try:
                 return await self._chat(client, messages)
             except httpx.HTTPStatusError as exc:
-                # Older Ollama builds or misconfigured proxies may lack /api/chat.
                 if exc.response.status_code == 404:
                     try:
                         return await self._generate(client, user_message, system_text)
@@ -80,8 +99,9 @@ class OllamaProvider(AIProvider):
             json={
                 "model": self._model,
                 "stream": False,
+                "keep_alive": self._keep_alive,
                 "messages": messages,
-                "options": {"temperature": self._temperature},
+                "options": self._options(),
             },
         )
         response.raise_for_status()
@@ -102,9 +122,10 @@ class OllamaProvider(AIProvider):
             json={
                 "model": self._model,
                 "stream": False,
+                "keep_alive": self._keep_alive,
                 "prompt": prompt,
                 "system": system_text or None,
-                "options": {"temperature": self._temperature},
+                "options": self._options(),
             },
         )
         response.raise_for_status()
@@ -148,7 +169,7 @@ class OllamaProvider(AIProvider):
                 ),
                 "models": ", ".join(models) if models else "",
             }
-        except Exception as exc:  # noqa: BLE001 - surface provider health cleanly
+        except Exception as exc:  # noqa: BLE001
             return {
                 "ok": False,
                 "reachable": False,
