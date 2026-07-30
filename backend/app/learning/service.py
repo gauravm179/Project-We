@@ -49,6 +49,18 @@ class LearningService:
         db.add(row)
         db.commit()
         db.refresh(row)
+        # Mirror into shared local learning store so all bots can reuse it.
+        from app.learning.local_store import LocalLearningStore
+
+        LocalLearningStore().record(
+            db,
+            bot_slug=specialist.slug,
+            kind="lesson",
+            title=f"Correction: {(payload.topic or payload.language or 'coding')}",
+            content=f"Mistake: {payload.mistake.strip()}\nCorrection: {payload.correction.strip()}",
+            source_ref=f"coding_lesson:{row.id}",
+            shared=True,
+        )
         return self._to_record(row, specialist.slug)
 
     def list_lessons(

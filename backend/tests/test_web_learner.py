@@ -40,6 +40,10 @@ def test_web_learner_has_trained_skills(client: TestClient):
         "read-heikin-ashi-charts",
         "read-trend-structure",
     }.issubset(slugs)
+    assert {
+        "store-local-learning",
+        "recall-local-learning",
+    }.issubset(slugs)
     assert all(s["status"] == "active" for s in skills)
 
 

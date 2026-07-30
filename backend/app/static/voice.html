@@ -304,13 +304,13 @@
       }
     }
 
-    const MIN_SERVER = { major: 0, minor: 3, patch: 3 };
+    const MIN_SERVER = { major: 0, minor: 3, patch: 4 };
     const RESTART_HINT =
       "OLD SERVER still running. In Terminal: Ctrl+C uvicorn → " +
       "cd ~/Project-We && git checkout main && git pull origin main → " +
       "cd backend && source .venv/bin/activate → " +
       "uvicorn app.main:app --host 127.0.0.1 --port 8000 " +
-      "(no --reload). Hard-refresh this page until stamp shows Server 0.3.3+.";
+      "(no --reload). Hard-refresh this page until stamp shows Server 0.3.4+.";
 
     function parseVersion(v) {
       const m = String(v || "").match(/^(\d+)\.(\d+)\.(\d+)/);
@@ -356,7 +356,7 @@
           const err = data.detail || data.reply || `Voice command failed (HTTP ${res.status})`;
           append("system", typeof err === "string" ? err : JSON.stringify(err));
           append("system", RESTART_HINT);
-          statusEl.textContent = "Command failed — server likely outdated (need 0.3.3+)";
+          statusEl.textContent = "Command failed — server likely outdated (need 0.3.4+)";
           statusEl.className = "status error";
           return;
         }
@@ -378,11 +378,11 @@
         append(
           "system",
           aborted
-            ? "Timed out after 45s — TradingView/learn should answer instantly on 0.3.3. " + RESTART_HINT
+            ? "Timed out after 45s — TradingView/learn should answer instantly on 0.3.4. " + RESTART_HINT
             : `Request failed: ${e && e.message ? e.message : e}`
         );
         statusEl.textContent = aborted
-          ? "Timed out — restart uvicorn on 0.3.3"
+          ? "Timed out — restart uvicorn on 0.3.4"
           : "Command failed — is uvicorn running?";
         statusEl.className = "status error";
       } finally {
@@ -509,9 +509,10 @@
           data.voice_command_always_200 === true;
         el.textContent =
           `Server ${data.version || "?"} · chart_fast_path=${data.chart_fast_path === true} · ` +
+          `shared_learnings=${data.shared_local_learnings === true} · ` +
           (ok
-            ? "ready (TradingView/learn + local chart curriculum)"
-            : "need 0.3.3+ — stop uvicorn, git pull origin main, start again, hard-refresh");
+            ? "ready (local learnings for all bots)"
+            : "need 0.3.4+ — stop uvicorn, git pull origin main, start again, hard-refresh");
         el.style.color = ok ? "#047857" : "#b91c1c";
         if (!ok) {
           append("system", RESTART_HINT);

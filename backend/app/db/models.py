@@ -261,3 +261,23 @@ class WebSearch(Base):
         default=lambda: datetime.now(timezone.utc),
         nullable=False,
     )
+
+
+class BotLearning(Base):
+    """Shared local learning notes every bot can write and later recall."""
+
+    __tablename__ = "bot_learnings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    bot_slug: Mapped[str] = mapped_column(String(64), nullable=False, default="master")
+    kind: Mapped[str] = mapped_column(String(32), nullable=False, default="insight")
+    title: Mapped[str] = mapped_column(String(256), nullable=False, default="")
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    source_ref: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    shared: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    storage_path: Mapped[str] = mapped_column(String(512), nullable=False, default="")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )

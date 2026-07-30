@@ -190,4 +190,7 @@ def test_global_skill_learn(client: TestClient):
     assert resp.json()["skill_slug"] == "general-debug"
 
     global_list = client.get("/skills/learned/global").json()
-    assert len(global_list) == 1
+    slugs = {row["skill_slug"] for row in global_list}
+    assert "general-debug" in slugs
+    assert "store-local-learning" in slugs
+    assert "recall-local-learning" in slugs

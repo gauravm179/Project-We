@@ -15,6 +15,7 @@ from app.schemas.voice import (
 )
 from app.voice.assistant import VoiceAssistant
 from app.web_learning.chart_curriculum import format_install_reply, install_chart_curriculum
+from app.learning.local_store import LocalLearningStore, is_shared_learning_policy_ask
 from app.web_learning.intent import (
     is_chart_curriculum_ask,
     is_chart_learn_ask,
@@ -173,6 +174,35 @@ async def voice_command(request: Request) -> JSONResponse:
                 reply="Empty question — type something and ask again.",
                 routed_to="master",
                 route_reason="empty",
+            )
+        )
+
+    # Shared local learning for all bots (disk + SQLite recall next time).
+    if is_shared_learning_policy_ask(transcript):
+        logger.info("voice/command shared-local-learning-enable")
+        from app.db.session import get_session_factory
+
+        db = get_session_factory()()
+        try:
+            store = LocalLearningStore()
+            result = store.enable_for_all_bots(db)
+            reply = store.format_enable_reply(result)
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("shared learning enable failed")
+            reply = (
+                f"Could not enable shared local learning ({type(exc).__name__}: {exc}). "
+                "Check data/ permissions and try again."
+            )
+        finally:
+            db.close()
+        return _safe_json(
+            _ok_payload(
+                transcript=transcript,
+                reply=reply,
+                requires_permission=False,
+                permission_request_id=None,
+                routed_to="master",
+                route_reason="shared local learning enabled",
             )
         )
 

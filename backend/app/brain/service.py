@@ -9,6 +9,12 @@ from app.brain.providers import build_provider
 from app.brain.router import route_message
 from app.core.config import get_settings
 from app.db.models import ChatMessage
+from app.learning.local_store import (
+    LocalLearningStore,
+    extract_explicit_learning,
+    is_shared_learning_policy_ask,
+    maybe_record_web_assist,
+)
 from app.memory.service import MemoryService
 from app.policy.service import PolicyService
 from app.schemas.chat import ChatHistoryItem, ChatReply
@@ -25,6 +31,7 @@ class BrainService:
         self._policy_service = PolicyService()
         self._web_learning = WebLearningService()
         self._specialists = SpecialistService()
+        self._local_learnings = LocalLearningStore()
 
     async def chat(self, db: Session, user_message: str) -> ChatReply:
         user_record = ChatMessage(role="user", content=user_message)
@@ -32,6 +39,29 @@ class BrainService:
         db.flush()
 
         self._memory_service.extract_and_store(db=db, message=user_message)
+
+        if is_shared_learning_policy_ask(user_message):
+            result = self._local_learnings.enable_for_all_bots(db)
+            text = self._local_learnings.format_enable_reply(result)
+            db.add(ChatMessage(role="assistant", content=text))
+            db.commit()
+            return ChatReply(
+                response=text,
+                routed_to="master",
+                route_reason="shared local learning enabled",
+            )
+
+        explicit = extract_explicit_learning(user_message)
+        if explicit:
+            self._local_learnings.record(
+                db,
+                bot_slug="master",
+                kind="insight",
+                title="User note",
+                content=explicit,
+                source_ref="explicit-remember",
+                shared=True,
+            )
 
         permission_reply = self._policy_service.parse_permission_reply(user_message)
         if permission_reply is not None:
@@ -216,6 +246,13 @@ class BrainService:
 
         provider = build_provider(settings)
         memory_context = self._memory_service.recent_context(db=db)
+        stored = self._local_learnings.recall_context(db, "master", limit=8)
+        if stored:
+            memory_context = (
+                f"{memory_context}\n\n--- STORED LOCAL LEARNINGS ---\n{stored}"
+                if memory_context
+                else f"--- STORED LOCAL LEARNINGS ---\n{stored}"
+            )
 
         if message_needs_web_assist(user_message):
             assist = await self._web_learning.assist_for_message(
@@ -263,6 +300,13 @@ class BrainService:
                     f"{memory_context}\n\n--- WEB LEARNER ASSIST ---\n{assist.context}"
                     if memory_context
                     else f"--- WEB LEARNER ASSIST ---\n{assist.context}"
+                )
+                maybe_record_web_assist(
+                    db,
+                    bot_slug="master",
+                    user_message=user_message,
+                    context=assist.context,
+                    capture_ids=list(assist.capture_ids or []),
                 )
 
         assistant_text = await provider.generate(
