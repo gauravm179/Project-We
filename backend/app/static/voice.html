@@ -304,6 +304,28 @@
       }
     }
 
+    const MIN_SERVER = { major: 0, minor: 3, patch: 2 };
+    const RESTART_HINT =
+      "OLD SERVER still running. In Terminal: Ctrl+C uvicorn → " +
+      "cd ~/Project-We && git checkout main && git pull origin main → " +
+      "cd backend && source .venv/bin/activate → " +
+      "uvicorn app.main:app --host 127.0.0.1 --port 8000 " +
+      "(no --reload). Hard-refresh this page until stamp shows Server 0.3.2+.";
+
+    function parseVersion(v) {
+      const m = String(v || "").match(/^(\d+)\.(\d+)\.(\d+)/);
+      if (!m) return null;
+      return { major: +m[1], minor: +m[2], patch: +m[3] };
+    }
+
+    function versionAtLeast(v, min) {
+      const p = parseVersion(v);
+      if (!p) return false;
+      if (p.major !== min.major) return p.major > min.major;
+      if (p.minor !== min.minor) return p.minor > min.minor;
+      return p.patch >= min.patch;
+    }
+
     async function sendCommand(transcript) {
       const text = (transcript || "").trim();
       if (!text) return;
@@ -313,12 +335,15 @@
       }
       append("user", text);
       setBusy(true);
-      statusEl.textContent = "Working… sent to master bot (watch Terminal for voice/command start)";
+      statusEl.textContent = "Working… sent to master bot (watch Terminal for MIDDLEWARE POST / voice/command)";
       statusEl.className = "status ok";
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 45000);
       try {
         const res = await fetch("/voice/command", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
+          signal: controller.signal,
           body: JSON.stringify({
             transcript: text,
             // Typed asks always share intent; mic checkbox is for microphone privacy only.
@@ -330,7 +355,8 @@
         if (!res.ok) {
           const err = data.detail || data.reply || `Voice command failed (HTTP ${res.status})`;
           append("system", typeof err === "string" ? err : JSON.stringify(err));
-          statusEl.textContent = "Command failed";
+          append("system", RESTART_HINT);
+          statusEl.textContent = "Command failed — server likely outdated (need 0.3.2+)";
           statusEl.className = "status error";
           return;
         }
@@ -348,10 +374,19 @@
         statusEl.textContent = data.routed_to ? `Answered via ${data.routed_to}` : "Answered via master bot";
         statusEl.className = "status ok";
       } catch (e) {
-        append("system", `Request failed: ${e && e.message ? e.message : e}`);
-        statusEl.textContent = "Command failed — is uvicorn running?";
+        const aborted = e && e.name === "AbortError";
+        append(
+          "system",
+          aborted
+            ? "Timed out after 45s — TradingView/learn should answer instantly on 0.3.2. " + RESTART_HINT
+            : `Request failed: ${e && e.message ? e.message : e}`
+        );
+        statusEl.textContent = aborted
+          ? "Timed out — restart uvicorn on 0.3.2"
+          : "Command failed — is uvicorn running?";
         statusEl.className = "status error";
       } finally {
+        clearTimeout(timer);
         setBusy(false);
       }
     }
@@ -462,18 +497,24 @@
     // Slow poll — multiple open tabs used to flood Terminal with /health + /voice/status.
     statusPollTimer = setInterval(refreshWakeStatus, 60000);
 
-    // Prove the page is talking to the updated server (must show 0.3.1+).
+    // Prove the page is talking to the updated server (must show 0.3.2+ + chart_fast_path).
     (async () => {
       const el = document.getElementById("build-stamp");
       try {
         const res = await fetch("/health");
         const data = await res.json();
-        el.textContent = `Server ${data.version || "?"} · if this is below 0.3.1, restart uvicorn after git pull`;
-        if (String(data.version || "").startsWith("0.3.0") || !data.version) {
-          el.style.color = "#b91c1c";
-          el.textContent += " — OLD SERVER; stop uvicorn, git pull, start again";
-        } else {
-          el.style.color = "#047857";
+        const ok =
+          versionAtLeast(data.version, MIN_SERVER) &&
+          data.chart_fast_path === true &&
+          data.voice_command_always_200 === true;
+        el.textContent =
+          `Server ${data.version || "?"} · chart_fast_path=${data.chart_fast_path === true} · ` +
+          (ok
+            ? "ready (TradingView/learn answers locally in ~1s)"
+            : "need 0.3.2+ — stop uvicorn, git pull origin main, start again, hard-refresh");
+        el.style.color = ok ? "#047857" : "#b91c1c";
+        if (!ok) {
+          append("system", RESTART_HINT);
         }
       } catch (e) {
         el.textContent = "Cannot reach /health — uvicorn not running on this page’s host/port";
