@@ -24,8 +24,9 @@ def test_route_explicit_voice_phrases():
     assert route_message("ask the master bot what time it is").target == "master"
 
 
-def test_route_default_master():
-    assert route_message("Remind me to buy milk").target == "master"
+def test_route_current_affairs_to_web_learner():
+    decision = route_message("show me current affairs")
+    assert decision.target == "web-learner-bot"
 
 
 def test_master_chat_routes_to_coding_bot(client: TestClient):

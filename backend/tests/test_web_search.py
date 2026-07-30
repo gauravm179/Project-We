@@ -25,6 +25,10 @@ def test_intent_detects_urls_and_search_queries():
     assert extract_search_query("google: fastapi tutorial") == "fastapi tutorial"
     assert message_needs_web_assist("look up asyncio patterns") is True
     assert message_needs_web_assist("write a for loop") is False
+    q = extract_search_query("show me current affairs")
+    assert q is not None
+    assert "news" in q.lower() or "current" in q.lower()
+    assert message_needs_web_assist("show me current affairs") is True
 
 
 def test_web_search_requires_permission(client: TestClient):

@@ -304,13 +304,13 @@
       }
     }
 
-    const MIN_SERVER = { major: 0, minor: 3, patch: 4 };
+    const MIN_SERVER = { major: 0, minor: 3, patch: 5 };
     const RESTART_HINT =
       "OLD SERVER still running. In Terminal: Ctrl+C uvicorn → " +
       "cd ~/Project-We && git checkout main && git pull origin main → " +
       "cd backend && source .venv/bin/activate → " +
       "uvicorn app.main:app --host 127.0.0.1 --port 8000 " +
-      "(no --reload). Hard-refresh this page until stamp shows Server 0.3.4+.";
+      "(no --reload). Hard-refresh this page until stamp shows Server 0.3.5+.";
 
     function parseVersion(v) {
       const m = String(v || "").match(/^(\d+)\.(\d+)\.(\d+)/);

@@ -17,6 +17,16 @@ _LEARN_INTENT_PATTERN = re.compile(
     r"\b(learn|teach(?:\s+me)?|explain|how\s+to\s+read|tutorial|guide)\b",
     IGNORECASE,
 )
+_NEWS_ASK_PATTERN = re.compile(
+    r"\b("
+    r"current\s+affairs?|latest\s+news|today'?s?\s+news|breaking\s+news|"
+    r"news\s+(?:today|headlines|update)|world\s+news|"
+    r"show\s+me\s+(?:the\s+)?(?:news|current\s+affairs?)|"
+    r"what(?:'s|\s+is)\s+happening\s+(?:in\s+the\s+world|today)|"
+    r"headlines\s+today"
+    r")\b",
+    IGNORECASE,
+)
 _FILLER_PATTERN = re.compile(
     r"\b("
     r"can\s+you|could\s+you|please|go\s+though|go\s+through|use\s+the\s+web\s+bot|"
@@ -47,6 +57,12 @@ def extract_search_query(message: str) -> str | None:
             if query:
                 return query
 
+    # News / current affairs → real web search (not Ollama guessing).
+    if _NEWS_ASK_PATTERN.search(text):
+        cleaned = _FILLER_PATTERN.sub(" ", text)
+        cleaned = re.sub(r"\s+", " ", cleaned).strip(" .?!")
+        return f"current world news headlines today {cleaned or text}"
+
     # "learn how to read trade charts" + a URL → search educational pages
     # (JS chart apps like TradingView don't yield useful HTML text alone).
     urls = extract_urls(text)
@@ -66,6 +82,10 @@ def extract_search_query(message: str) -> str | None:
 
 def is_learn_intent(message: str) -> bool:
     return bool(_LEARN_INTENT_PATTERN.search(message or ""))
+
+
+def is_news_ask(message: str) -> bool:
+    return bool(_NEWS_ASK_PATTERN.search(message or ""))
 
 
 _CHART_TOPIC_KEYS = (
