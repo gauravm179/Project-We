@@ -4,7 +4,7 @@ All work is saved on GitHub **`main`** (also on `feature/v0.2-memory` and `curso
 
 Last saved: voice bot working with local Ollama model `qwen2.5:1.5b`, SQLite lock fixes, web/coding routing.
 
-## Tomorrow — start here
+## Tomorrow — start here (fast replies)
 
 ```bash
 cd ~/Project-We
@@ -16,8 +16,15 @@ source .venv/bin/activate
 
 export PROJECT_WE_PROVIDER=ollama
 export PROJECT_WE_OLLAMA_MODEL=qwen2.5:1.5b
+export PROJECT_WE_OLLAMA_REASONING=false
+export PROJECT_WE_OLLAMA_NUM_PREDICT=256
+export PROJECT_WE_OLLAMA_KEEP_ALIVE=30m
 uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
+
+Use `qwen2.5:1.5b` for speed. Avoid `deepseek-r1:8b` for chat — it thinks longer (often 20s+).
+
+First reply after idle can be slower (model load); later ones are faster with keep_alive.
 
 Open:
 
