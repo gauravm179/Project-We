@@ -20,6 +20,7 @@ from app.policy.service import PolicyService
 from app.web_learning.intent import (
     extract_search_query,
     extract_urls,
+    is_learn_intent,
     is_valid_http_url,
     message_needs_web_assist,
 )
@@ -241,6 +242,32 @@ class WebLearningService:
                         parts.append(
                             f"{idx}. {result.title}\n   URL: {result.url}\n   {result.snippet}"
                         )
+                    # Learning asks: capture top educational pages (skills: read + store).
+                    if is_learn_intent(message) and auto_capture_urls:
+                        captured_from_search = 0
+                        for result in search.results:
+                            if captured_from_search >= 2:
+                                break
+                            if not is_valid_http_url(result.url) or _is_js_heavy_url(result.url):
+                                continue
+                            try:
+                                captured = await self.capture_url(
+                                    db,
+                                    WEB_LEARNER_SLUG,
+                                    result.url,
+                                    max_images=2,
+                                    allow_without_permission=True,
+                                )
+                            except Exception as exc:  # noqa: BLE001
+                                logger.warning("Learn-capture failed for %s: %s", result.url, exc)
+                                continue
+                            if isinstance(captured, CaptureResult):
+                                capture_ids.append(captured.capture_id)
+                                captured_from_search += 1
+                                parts.append(
+                                    f"Captured #{captured.capture_id}: {captured.title} ({captured.url})\n"
+                                    f"Summary: {captured.summary}"
+                                )
 
         if auto_capture_urls:
             for url in extract_urls(message)[:max_url_captures]:
@@ -249,7 +276,7 @@ class WebLearningService:
                 if _is_js_heavy_url(url):
                     parts.append(
                         f"Skipped capture of interactive chart page ({url}). "
-                        "Live chart apps are JavaScript-only; use search results / tutorials instead."
+                        "Live chart apps are JavaScript-only; used search + tutorial pages instead."
                     )
                     continue
                 try:
@@ -502,6 +529,116 @@ class WebLearningService:
             ],
             "created_at": row.created_at.isoformat(),
         }
+
+    def compose_grounded_skill_reply(
+        self,
+        user_message: str,
+        assist: WebAssistResult,
+    ) -> str:
+        """Build a teaching reply from real search/capture skill output (no invented browsing)."""
+        context = (assist.context or "").strip()
+        if not context:
+            return (
+                "I could not fetch web evidence yet. Approve internet access, then ask again "
+                "with a URL or ‘search for …’ / ‘learn how to …’."
+            )
+
+        search_lines: list[str] = []
+        capture_lines: list[str] = []
+        notes: list[str] = []
+        current_search_title = ""
+        for raw in context.splitlines():
+            line = raw.strip()
+            if not line or line.startswith("WEB LEARNER ASSIST"):
+                continue
+            if line.startswith("Search #"):
+                notes.append(line)
+                continue
+            if line.startswith("Skipped capture") or line.startswith("Search failed") or line.startswith("Capture failed"):
+                notes.append(line)
+                continue
+            if line.startswith("Captured #"):
+                capture_lines.append(line)
+                continue
+            if line.startswith("Summary:"):
+                if capture_lines:
+                    capture_lines[-1] = f"{capture_lines[-1]}\n  {line}"
+                continue
+            numbered = re.match(r"^(\d+)\.\s+(.*)$", line)
+            if numbered:
+                current_search_title = numbered.group(2).strip()
+                search_lines.append(f"{numbered.group(1)}. {current_search_title}")
+                continue
+            if line.startswith("URL:") and search_lines:
+                search_lines[-1] = f"{search_lines[-1]}\n   {line}"
+                continue
+            if search_lines and not line.startswith("Captured"):
+                # snippet under a search hit
+                search_lines[-1] = f"{search_lines[-1]}\n   {line}"
+
+        parts: list[str] = [
+            "I used web-learner skills (web-search + read-web-page / compress-store-learning) "
+            "on real fetched data — not made-up browser steps.",
+        ]
+
+        if notes:
+            parts.append("Skill notes:")
+            parts.extend(f"- {n}" for n in notes[:6])
+
+        if search_lines:
+            parts.append("\nWhat search found:")
+            parts.extend(search_lines[:5])
+
+        if capture_lines:
+            parts.append("\nWhat I read and stored locally:")
+            parts.extend(f"- {c}" for c in capture_lines[:4])
+            if assist.capture_ids:
+                parts.append(
+                    "Stored capture IDs: " + ", ".join(f"#{cid}" for cid in assist.capture_ids)
+                )
+
+        if is_learn_intent(user_message):
+            parts.append(
+                "\nHow to read trade charts (from the fetched snippets above — "
+                "not from inventing a TradingView walkthrough):"
+            )
+            # Pull short teaching bullets only from snippet text we already have.
+            snippet_blob = " ".join(search_lines + capture_lines).lower()
+            lessons: list[str] = []
+            if any(w in snippet_blob for w in ("candlestick", "candle", "ohlc", "open high low close")):
+                lessons.append(
+                    "Candlesticks summarize a period’s open, high, low, and close; "
+                    "body = open↔close, wicks = high/low extremes."
+                )
+            if any(w in snippet_blob for w in ("support", "resistance")):
+                lessons.append(
+                    "Support/resistance are price zones where buying or selling often pauses the move."
+                )
+            if any(w in snippet_blob for w in ("volume",)):
+                lessons.append("Volume helps confirm whether a price move has participation behind it.")
+            if any(w in snippet_blob for w in ("trend", "moving average", "ema", "sma")):
+                lessons.append("Trend tools (e.g. moving averages) help see direction without reacting to every tick.")
+            if not lessons:
+                lessons.append(
+                    "I could only rely on the titles/snippets listed above. "
+                    "Open those tutorial URLs (or ask me to capture a specific tutorial page) "
+                    "for deeper chart-reading detail."
+                )
+            for i, lesson in enumerate(lessons, start=1):
+                parts.append(f"{i}. {lesson}")
+
+        if not search_lines and not capture_lines:
+            parts.append(
+                "\nNo usable search hits or page text were returned. "
+                "Try: search for how to read candlestick charts"
+            )
+
+        parts.append(
+            "\nI am not giving fake click-through steps for the live TradingView canvas — "
+            "that chart UI is JavaScript and not readable as plain HTML. "
+            "Teaching above comes from search/capture skill evidence."
+        )
+        return "\n".join(parts)
 
     def build_learning_context(self, db: Session, specialist_id: int, limit: int = 5) -> str:
         rows = db.scalars(

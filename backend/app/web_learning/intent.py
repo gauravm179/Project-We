@@ -64,6 +64,10 @@ def extract_search_query(message: str) -> str | None:
     return None
 
 
+def is_learn_intent(message: str) -> bool:
+    return bool(_LEARN_INTENT_PATTERN.search(message or ""))
+
+
 def message_needs_web_assist(message: str) -> bool:
     return bool(extract_urls(message) or extract_search_query(message))
 

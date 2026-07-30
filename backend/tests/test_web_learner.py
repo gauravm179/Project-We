@@ -32,6 +32,7 @@ def test_web_learner_has_trained_skills(client: TestClient):
         "compress-store-learning",
         "recall-stored-pages",
         "web-search",
+        "teach-from-web",
     }
     assert all(s["status"] == "active" for s in skills)
 
