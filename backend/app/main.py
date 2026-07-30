@@ -58,7 +58,7 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(
     title="Project We",
-    version="0.3.0",
+    version="0.3.1",
     lifespan=lifespan,
 )
 
@@ -76,11 +76,20 @@ _safety_service = SafetyService()
 @app.middleware("http")
 async def emergency_stop_guard(request: Request, call_next):
     path = request.url.path
-    # Skip DB for static assets and high-frequency voice status polls.
+    if request.method == "POST" and path.startswith("/voice/command"):
+        # Visible even if the route never runs (middleware/DB issues).
+        import logging
+
+        logging.getLogger("app.voice.middleware").info(
+            "MIDDLEWARE POST %s received", path
+        )
+
+    # Skip DB for static assets, health, and all voice endpoints (status polls + commands).
     if (
         path.startswith("/safety")
         or path.startswith("/ui")
-        or path in {"/voice/status", "/health", "/favicon.ico"}
+        or path.startswith("/voice")
+        or path in {"/health", "/favicon.ico"}
     ):
         return await call_next(request)
 

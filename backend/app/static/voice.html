@@ -90,6 +90,7 @@
   <div class="wrap">
     <section class="panel">
       <h1>Voice Bot</h1>
+      <p class="muted" id="build-stamp">Build check: loading…</p>
       <p class="muted">
         Ask with your voice <strong>or</strong> type below. The master bot answers and can hand work to
         coding-bot or web-learner-bot.
@@ -460,6 +461,25 @@
     refreshWakeStatus();
     // Slow poll — multiple open tabs used to flood Terminal with /health + /voice/status.
     statusPollTimer = setInterval(refreshWakeStatus, 60000);
+
+    // Prove the page is talking to the updated server (must show 0.3.1+).
+    (async () => {
+      const el = document.getElementById("build-stamp");
+      try {
+        const res = await fetch("/health");
+        const data = await res.json();
+        el.textContent = `Server ${data.version || "?"} · if this is below 0.3.1, restart uvicorn after git pull`;
+        if (String(data.version || "").startsWith("0.3.0") || !data.version) {
+          el.style.color = "#b91c1c";
+          el.textContent += " — OLD SERVER; stop uvicorn, git pull, start again";
+        } else {
+          el.style.color = "#047857";
+        }
+      } catch (e) {
+        el.textContent = "Cannot reach /health — uvicorn not running on this page’s host/port";
+        el.style.color = "#b91c1c";
+      }
+    })();
   </script>
 </body>
 </html>

@@ -89,6 +89,25 @@ def is_chart_learn_ask(message: str) -> bool:
     )
 
 
+def local_chart_lesson(user_message: str = "") -> str:
+    """Instant chart-reading lesson with no DB, web, or Ollama (Mac-safe path)."""
+    return (
+        "I used the web-learner teach-from-web skill (local chart pack). "
+        "I am not opening TradingView’s live JS chart canvas — that page is not readable as HTML.\n\n"
+        "How to read trade charts:\n"
+        "1. Candlestick = one time period: open, high, low, close. "
+        "Green/white usually close > open; red/black usually close < open.\n"
+        "2. Wicks (shadows) show the extreme high/low rejected during that period.\n"
+        "3. Read left → right: higher highs/higher lows = uptrend; "
+        "lower highs/lower lows = downtrend; sideways = range.\n"
+        "4. Volume rising with a move often confirms interest; weak volume can mean a fragile move.\n"
+        "5. On TradingView you pick a symbol + timeframe, then add indicators — "
+        "ask me to search for a specific tutorial page if you want stored web notes later "
+        "(approve internet first).\n\n"
+        f"Your ask: {(user_message or '').strip()[:240]}"
+    )
+
+
 def message_needs_web_assist(message: str) -> bool:
     return bool(extract_urls(message) or extract_search_query(message))
 
