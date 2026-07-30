@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from fastapi import APIRouter
+import time
+
+from fastapi import APIRouter, Query
 from fastapi.responses import RedirectResponse
 
 from app.brain.providers import build_provider
@@ -8,6 +10,9 @@ from app.brain.providers.ollama import OllamaProvider
 from app.core.config import get_settings
 
 router = APIRouter()
+
+_OLLAMA_CACHE: dict[str, object] = {"at": 0.0, "info": None}
+_OLLAMA_CACHE_SECONDS = 60.0
 
 
 @router.get("/")
@@ -17,7 +22,12 @@ def root_redirect() -> RedirectResponse:
 
 
 @router.get("/health")
-async def health() -> dict[str, object]:
+async def health(
+    probe: bool = Query(
+        default=False,
+        description="If true, ping Ollama now. Otherwise use a short cached check.",
+    ),
+) -> dict[str, object]:
     settings = get_settings()
     provider_info: dict[str, object] = {
         "provider": settings.provider,
@@ -31,10 +41,25 @@ async def health() -> dict[str, object]:
     }
 
     if settings.provider == "ollama":
-        provider = build_provider(settings)
-        if isinstance(provider, OllamaProvider):
-            health_info = await provider.healthcheck()
-            provider_info.update(health_info)
+        now = time.monotonic()
+        cached = _OLLAMA_CACHE.get("info")
+        cache_at = float(_OLLAMA_CACHE.get("at") or 0.0)
+        use_cache = (
+            not probe
+            and cached is not None
+            and (now - cache_at) < _OLLAMA_CACHE_SECONDS
+        )
+        if use_cache and isinstance(cached, dict):
+            provider_info.update(cached)
+            provider_info["ollama_check"] = "cached"
+        else:
+            provider = build_provider(settings)
+            if isinstance(provider, OllamaProvider):
+                health_info = await provider.healthcheck()
+                _OLLAMA_CACHE["at"] = now
+                _OLLAMA_CACHE["info"] = health_info
+                provider_info.update(health_info)
+                provider_info["ollama_check"] = "live" if probe else "refreshed"
 
     return {
         "name": settings.app_name,

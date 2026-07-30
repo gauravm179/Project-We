@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, HTTPException
 
 from app.core.config import get_settings
@@ -10,6 +12,8 @@ from app.schemas.voice import (
     VoiceStatusResponse,
 )
 from app.voice.assistant import VoiceAssistant
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/voice", tags=["voice"])
 voice_assistant = VoiceAssistant()
@@ -50,6 +54,9 @@ def voice_config(payload: VoiceConfigPatch) -> VoiceStatusResponse:
 @router.post("/command", response_model=VoiceCommandResponse)
 async def voice_command(payload: VoiceCommandRequest) -> VoiceCommandResponse:
     """Process a voice transcript (browser STT or wake-word pipeline)."""
+    # Log immediately — uvicorn access logs only appear after the reply finishes,
+    # which can take a long time for web + Ollama on older Macs.
+    logger.info("voice/command start: %s", (payload.transcript or "")[:160])
     if not payload.shared:
         raise HTTPException(
             status_code=403,
@@ -58,5 +65,11 @@ async def voice_command(payload: VoiceCommandRequest) -> VoiceCommandResponse:
     try:
         result = await voice_assistant.handle_command(payload.transcript, speak=payload.speak)
     except Exception as exc:  # pragma: no cover - provider/db errors
+        logger.exception("voice/command failed")
         raise HTTPException(status_code=500, detail=str(exc)) from exc
+    logger.info(
+        "voice/command done routed=%s chars=%s",
+        result.get("routed_to"),
+        len(result.get("reply") or ""),
+    )
     return VoiceCommandResponse(**result)
