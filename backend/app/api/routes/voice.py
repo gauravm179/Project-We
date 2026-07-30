@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import JSONResponse
 
 from app.core.config import get_settings
 from app.schemas.voice import (
@@ -17,6 +18,22 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/voice", tags=["voice"])
 voice_assistant = VoiceAssistant()
+
+
+def _ok_payload(**kwargs: object) -> dict[str, object]:
+    """Build a VoiceCommandResponse dict without raising on odd values."""
+    try:
+        return VoiceCommandResponse(**kwargs).model_dump()  # type: ignore[arg-type]
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("Voice response schema fallback: %s", exc)
+        return {
+            "transcript": str(kwargs.get("transcript") or ""),
+            "reply": str(kwargs.get("reply") or f"Internal response error: {exc}"),
+            "requires_permission": False,
+            "permission_request_id": None,
+            "routed_to": "master",
+            "route_reason": "response-fallback",
+        }
 
 
 @router.get("/status", response_model=VoiceStatusResponse)
@@ -51,39 +68,56 @@ def voice_config(payload: VoiceConfigPatch) -> VoiceStatusResponse:
     return VoiceStatusResponse(**voice_assistant.status())
 
 
-@router.post("/command", response_model=VoiceCommandResponse)
-async def voice_command(payload: VoiceCommandRequest) -> VoiceCommandResponse:
-    """Process a voice transcript (browser STT or wake-word pipeline)."""
-    logger.info("voice/command start: %s", (payload.transcript or "")[:160])
+@router.post("/command")
+async def voice_command(payload: VoiceCommandRequest) -> JSONResponse:
+    """Process a voice/text command. Always returns HTTP 200 with a chat reply."""
+    transcript = (payload.transcript or "").strip()
+    logger.info("voice/command start: %s", transcript[:160])
+
     if not payload.shared:
-        raise HTTPException(
-            status_code=403,
-            detail=(
-                "Voice command denied. Check “I share microphone / voice” on the Voice page, "
-                "then try again."
-            ),
+        return JSONResponse(
+            _ok_payload(
+                transcript=transcript,
+                reply=(
+                    "Voice/text sharing is off. Check “I share microphone / voice”, "
+                    "then ask again."
+                ),
+                routed_to="master",
+                route_reason="shared=false",
+            )
         )
+
+    if not transcript:
+        return JSONResponse(
+            _ok_payload(
+                transcript="",
+                reply="Empty question — type something and ask again.",
+                routed_to="master",
+                route_reason="empty",
+            )
+        )
+
     try:
-        result = await voice_assistant.handle_command(payload.transcript, speak=payload.speak)
-    except Exception as exc:  # noqa: BLE001 - never leave the UI with an empty failure
-        logger.exception("voice/command failed")
-        # Return 200 with an actionable reply so the chat panel always shows something.
-        return VoiceCommandResponse(
-            transcript=payload.transcript,
-            reply=(
-                "I hit an error while handling that request "
-                f"({type(exc).__name__}: {exc}). "
-                "If this was a web/learn ask, approve internet (yes approved), then try again. "
-                "You can also use http://127.0.0.1:8000/ui/web-learner.html."
-            ),
-            requires_permission=False,
-            permission_request_id=None,
-            routed_to="master",
-            route_reason=f"voice error: {type(exc).__name__}",
+        result = await voice_assistant.handle_command(transcript, speak=payload.speak)
+        payload_out = _ok_payload(**result)
+        logger.info(
+            "voice/command done routed=%s chars=%s",
+            payload_out.get("routed_to"),
+            len(str(payload_out.get("reply") or "")),
         )
-    logger.info(
-        "voice/command done routed=%s chars=%s",
-        result.get("routed_to"),
-        len(result.get("reply") or ""),
-    )
-    return VoiceCommandResponse(**result)
+        return JSONResponse(payload_out)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("voice/command failed")
+        return JSONResponse(
+            _ok_payload(
+                transcript=transcript,
+                reply=(
+                    "I hit an error while handling that request "
+                    f"({type(exc).__name__}: {exc}). "
+                    "Try: yes approved  then ask again. "
+                    "Or open http://127.0.0.1:8000/ui/web-learner.html"
+                ),
+                routed_to="master",
+                route_reason=f"voice error: {type(exc).__name__}",
+            )
+        )

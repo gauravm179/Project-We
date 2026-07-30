@@ -72,7 +72,9 @@ def test_voice_command_requires_share(client: TestClient):
         "/voice/command",
         json={"transcript": "hello", "shared": False},
     )
-    assert denied.status_code == 403
+    # Soft-fail in chat (HTTP 200) so the Voice UI always shows a message.
+    assert denied.status_code == 200
+    assert "sharing is off" in denied.json()["reply"].lower()
 
 
 def test_voice_command_runs_master_bot(client: TestClient):
