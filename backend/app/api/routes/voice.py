@@ -54,19 +54,33 @@ def voice_config(payload: VoiceConfigPatch) -> VoiceStatusResponse:
 @router.post("/command", response_model=VoiceCommandResponse)
 async def voice_command(payload: VoiceCommandRequest) -> VoiceCommandResponse:
     """Process a voice transcript (browser STT or wake-word pipeline)."""
-    # Log immediately — uvicorn access logs only appear after the reply finishes,
-    # which can take a long time for web + Ollama on older Macs.
     logger.info("voice/command start: %s", (payload.transcript or "")[:160])
     if not payload.shared:
         raise HTTPException(
             status_code=403,
-            detail="Voice command denied. Set shared=true only when user explicitly shares voice.",
+            detail=(
+                "Voice command denied. Check “I share microphone / voice” on the Voice page, "
+                "then try again."
+            ),
         )
     try:
         result = await voice_assistant.handle_command(payload.transcript, speak=payload.speak)
-    except Exception as exc:  # pragma: no cover - provider/db errors
+    except Exception as exc:  # noqa: BLE001 - never leave the UI with an empty failure
         logger.exception("voice/command failed")
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        # Return 200 with an actionable reply so the chat panel always shows something.
+        return VoiceCommandResponse(
+            transcript=payload.transcript,
+            reply=(
+                "I hit an error while handling that request "
+                f"({type(exc).__name__}: {exc}). "
+                "If this was a web/learn ask, approve internet (yes approved), then try again. "
+                "You can also use http://127.0.0.1:8000/ui/web-learner.html."
+            ),
+            requires_permission=False,
+            permission_request_id=None,
+            routed_to="master",
+            route_reason=f"voice error: {type(exc).__name__}",
+        )
     logger.info(
         "voice/command done routed=%s chars=%s",
         result.get("routed_to"),
