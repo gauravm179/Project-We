@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import logging
+from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
 
 from app.core.config import get_settings
@@ -20,10 +21,39 @@ router = APIRouter(prefix="/voice", tags=["voice"])
 voice_assistant = VoiceAssistant()
 
 
+def _safe_json(payload: dict[str, Any]) -> JSONResponse:
+    """Always return HTTP 200 JSON, even if encoding is awkward."""
+    try:
+        return JSONResponse(payload)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("JSONResponse failed: %s", exc)
+        return JSONResponse(
+            {
+                "transcript": str(payload.get("transcript") or ""),
+                "reply": f"Response encoding error: {exc}",
+                "requires_permission": False,
+                "permission_request_id": None,
+                "routed_to": "master",
+                "route_reason": "json-encode-error",
+            }
+        )
+
+
 def _ok_payload(**kwargs: object) -> dict[str, object]:
     """Build a VoiceCommandResponse dict without raising on odd values."""
     try:
-        return VoiceCommandResponse(**kwargs).model_dump()  # type: ignore[arg-type]
+        data = VoiceCommandResponse(**kwargs).model_dump()  # type: ignore[arg-type]
+        # Ensure JSON-safe primitives only.
+        return {
+            "transcript": str(data.get("transcript") or ""),
+            "reply": str(data.get("reply") or ""),
+            "requires_permission": bool(data.get("requires_permission")),
+            "permission_request_id": data.get("permission_request_id"),
+            "routed_to": str(data.get("routed_to") or "master"),
+            "route_reason": (
+                str(data.get("route_reason")) if data.get("route_reason") is not None else None
+            ),
+        }
     except Exception as exc:  # noqa: BLE001
         logger.exception("Voice response schema fallback: %s", exc)
         return {
@@ -36,9 +66,31 @@ def _ok_payload(**kwargs: object) -> dict[str, object]:
         }
 
 
-@router.get("/status", response_model=VoiceStatusResponse)
-def voice_status() -> VoiceStatusResponse:
-    return VoiceStatusResponse(**voice_assistant.status())
+@router.get("/status")
+def voice_status() -> JSONResponse:
+    try:
+        data = voice_assistant.status()
+        # Validate lightly; never 500 the status poll.
+        return JSONResponse(VoiceStatusResponse(**data).model_dump())
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("voice/status failed")
+        return JSONResponse(
+            {
+                "active": False,
+                "wake_word": "hey jarvis",
+                "wake_sensitivity": 0.5,
+                "stt_model": "base",
+                "tts_voice": "en_US-amy-medium",
+                "last_transcript": "",
+                "last_reply": "",
+                "last_error": str(exc),
+                "deps_ready": False,
+                "stt_ready": False,
+                "deps": {},
+                "python_hint": None,
+                "progress": {"busy": False, "step": "status-error", "detail": str(exc), "steps": []},
+            }
+        )
 
 
 @router.post("/start", response_model=VoiceStatusResponse)
@@ -69,13 +121,35 @@ def voice_config(payload: VoiceConfigPatch) -> VoiceStatusResponse:
 
 
 @router.post("/command")
-async def voice_command(payload: VoiceCommandRequest) -> JSONResponse:
+async def voice_command(request: Request) -> JSONResponse:
     """Process a voice/text command. Always returns HTTP 200 with a chat reply."""
+    try:
+        body = await request.json()
+    except Exception as exc:  # noqa: BLE001
+        return _safe_json(
+            _ok_payload(
+                transcript="",
+                reply=f"Could not read request JSON ({exc}).",
+                route_reason="bad-json",
+            )
+        )
+
+    try:
+        payload = VoiceCommandRequest.model_validate(body)
+    except Exception as exc:  # noqa: BLE001
+        return _safe_json(
+            _ok_payload(
+                transcript=str((body or {}).get("transcript") or ""),
+                reply=f"Invalid voice command payload ({exc}).",
+                route_reason="bad-payload",
+            )
+        )
+
     transcript = (payload.transcript or "").strip()
     logger.info("voice/command start: %s", transcript[:160])
 
     if not payload.shared:
-        return JSONResponse(
+        return _safe_json(
             _ok_payload(
                 transcript=transcript,
                 reply=(
@@ -88,7 +162,7 @@ async def voice_command(payload: VoiceCommandRequest) -> JSONResponse:
         )
 
     if not transcript:
-        return JSONResponse(
+        return _safe_json(
             _ok_payload(
                 transcript="",
                 reply="Empty question — type something and ask again.",
@@ -105,17 +179,16 @@ async def voice_command(payload: VoiceCommandRequest) -> JSONResponse:
             payload_out.get("routed_to"),
             len(str(payload_out.get("reply") or "")),
         )
-        return JSONResponse(payload_out)
+        return _safe_json(payload_out)
     except Exception as exc:  # noqa: BLE001
         logger.exception("voice/command failed")
-        return JSONResponse(
+        return _safe_json(
             _ok_payload(
                 transcript=transcript,
                 reply=(
                     "I hit an error while handling that request "
                     f"({type(exc).__name__}: {exc}). "
-                    "Try: yes approved  then ask again. "
-                    "Or open http://127.0.0.1:8000/ui/web-learner.html"
+                    "Try again, or open http://127.0.0.1:8000/ui/web-learner.html"
                 ),
                 routed_to="master",
                 route_reason=f"voice error: {type(exc).__name__}",

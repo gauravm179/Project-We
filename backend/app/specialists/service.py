@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 
 from sqlalchemy import select
@@ -11,7 +12,7 @@ from app.core.config import get_settings
 from app.db.models import Specialist, SpecialistMessage
 from app.learning.guidelines import GuidelinesService
 from app.learning.service import LearningService
-from app.web_learning.intent import message_needs_web_assist
+from app.web_learning.intent import is_chart_learn_ask, is_learn_intent, message_needs_web_assist
 from app.web_learning.service import WebAssistResult, WebLearningService
 from app.memory.service import MemoryService
 from app.policy.service import PolicyService
@@ -123,50 +124,147 @@ class SpecialistService:
         internet_approved = self._policy.has_approved_capability(db, "internet")
         skip_web_assist_early = slug == "coding-bot" and (needs_guidelines or wants_live_docs)
 
-        web_assist: WebAssistResult | dict[str, object] | None = None
+        # Chart/TradingView teaching: answer from local skill pack immediately.
+        # Live DuckDuckGo/TradingView fetches were hanging ~100s+ and dying with HTTP 500 on Mac.
+        if slug == "web-learner-bot" and is_chart_learn_ask(user_message):
+            from app.progress import progress
+
+            progress.step("fast-teach", "Local chart skill lesson (no long web wait)")
+            web_assist: WebAssistResult | dict[str, object] | None = None
+            if internet_approved:
+                progress.step("web-assist", "Quick optional search (12s max)")
+                try:
+                    web_assist = await asyncio.wait_for(
+                        self._web_learning.assist_for_message(
+                            db,
+                            user_message,
+                            requesting_bot=slug,
+                            auto_capture_urls=False,
+                        ),
+                        timeout=12.0,
+                    )
+                except asyncio.TimeoutError:
+                    progress.step("web-timeout", "Search timed out — using local chart lesson")
+                    web_assist = WebAssistResult(
+                        context="WEB LEARNER ASSIST:\nSearch timed out after 12s"
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    logger.exception("Quick web assist failed")
+                    progress.step("web-assist-error", f"{type(exc).__name__}: {exc}")
+                    web_assist = WebAssistResult(
+                        context=f"WEB LEARNER ASSIST:\nSearch/capture failed: {exc}"
+                    )
+
+            if isinstance(web_assist, WebAssistResult) and web_assist.requires_permission:
+                # Still teach locally; permission only needed for live enrichment.
+                web_assist = WebAssistResult(
+                    context=(
+                        "WEB LEARNER ASSIST:\n"
+                        "Live web enrichment needs internet approval later. "
+                        "Teaching from local chart skill now."
+                    )
+                )
+            elif isinstance(web_assist, dict) and web_assist.get("requires_permission"):
+                web_assist = WebAssistResult(
+                    context=(
+                        "WEB LEARNER ASSIST:\n"
+                        "Live web enrichment needs internet approval later. "
+                        "Teaching from local chart skill now."
+                    )
+                )
+            elif web_assist is None:
+                web_assist = WebAssistResult(
+                    context=(
+                        "WEB LEARNER ASSIST:\n"
+                        "Using local chart-reading skill pack "
+                        "(TradingView live canvas is JavaScript-only)."
+                    )
+                )
+
+            if isinstance(web_assist, WebAssistResult):
+                assistant_text = self._web_learning.compose_grounded_skill_reply(
+                    user_message, web_assist
+                )
+            else:
+                assistant_text = self._web_learning.compose_grounded_skill_reply(
+                    user_message,
+                    WebAssistResult(context="WEB LEARNER ASSIST:\nLocal chart skill pack"),
+                )
+            db.add(
+                SpecialistMessage(specialist_id=row.id, role="assistant", content=assistant_text)
+            )
+            db.commit()
+            progress.step("fast-teach-done", f"chars={len(assistant_text)}")
+            return SpecialistChatReply(
+                specialist_slug=row.slug,
+                specialist_name=row.name,
+                response=assistant_text,
+            )
+
+        web_assist = None
         if message_needs_web_assist(user_message) and not skip_web_assist_early:
             from app.progress import progress
 
             progress.step("web-assist", f"{slug} fetching search/pages")
             try:
-                web_assist = await self._web_learning.assist_for_message(
-                    db,
-                    user_message,
-                    requesting_bot=slug,
+                web_assist = await asyncio.wait_for(
+                    self._web_learning.assist_for_message(
+                        db,
+                        user_message,
+                        requesting_bot=slug,
+                    ),
+                    timeout=20.0,
                 )
+            except asyncio.TimeoutError:
+                progress.step("web-timeout", "Web assist timed out after 20s")
+                if slug == "web-learner-bot" and is_learn_intent(user_message):
+                    fallback = self._web_learning.compose_grounded_skill_reply(
+                        user_message,
+                        WebAssistResult(context="WEB LEARNER ASSIST:\nSearch timed out after 20s"),
+                    )
+                    db.add(
+                        SpecialistMessage(
+                            specialist_id=row.id, role="assistant", content=fallback
+                        )
+                    )
+                    db.commit()
+                    return SpecialistChatReply(
+                        specialist_slug=row.slug,
+                        specialist_name=row.name,
+                        response=fallback,
+                    )
+                web_assist = WebAssistResult(context="WEB LEARNER ASSIST:\nSearch timed out")
             except Exception as exc:  # noqa: BLE001
                 logger.exception("Web assist failed for %s", slug)
                 progress.step("web-assist-error", f"{type(exc).__name__}: {exc}")
-                if slug == "web-learner-bot":
-                    from app.web_learning.intent import is_learn_intent
-
-                    if is_learn_intent(user_message):
-                        fallback = self._web_learning.compose_grounded_skill_reply(
-                            user_message,
-                            WebAssistResult(
-                                context=(
-                                    "WEB LEARNER ASSIST:\n"
-                                    f"Search/capture failed: {type(exc).__name__}: {exc}"
-                                )
-                            ),
-                        )
-                        db.add(
-                            SpecialistMessage(
-                                specialist_id=row.id, role="assistant", content=fallback
+                if slug == "web-learner-bot" and is_learn_intent(user_message):
+                    fallback = self._web_learning.compose_grounded_skill_reply(
+                        user_message,
+                        WebAssistResult(
+                            context=(
+                                "WEB LEARNER ASSIST:\n"
+                                f"Search/capture failed: {type(exc).__name__}: {exc}"
                             )
+                        ),
+                    )
+                    db.add(
+                        SpecialistMessage(
+                            specialist_id=row.id, role="assistant", content=fallback
                         )
-                        db.commit()
-                        return SpecialistChatReply(
-                            specialist_slug=row.slug,
-                            specialist_name=row.name,
-                            response=fallback,
-                        )
+                    )
+                    db.commit()
+                    return SpecialistChatReply(
+                        specialist_slug=row.slug,
+                        specialist_name=row.name,
+                        response=fallback,
+                    )
                 web_assist = WebAssistResult(
                     context=f"WEB LEARNER ASSIST:\nSearch/capture failed: {exc}"
                 )
             if isinstance(web_assist, WebAssistResult) and web_assist.requires_permission:
                 assistant_text = str(
-                    web_assist.message or "Internet permission required for web search or page reading."
+                    web_assist.message
+                    or "Internet permission required for web search or page reading."
                 )
                 db.add(
                     SpecialistMessage(specialist_id=row.id, role="assistant", content=assistant_text)

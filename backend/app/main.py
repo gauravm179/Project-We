@@ -142,3 +142,25 @@ def voice_ui() -> FileResponse:
 
 
 app.mount("/ui", StaticFiles(directory=STATIC_DIR, html=True), name="ui")
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    """Last-resort: never leave Voice UI with a blank HTTP 500 for /voice/command."""
+    import logging
+
+    logging.getLogger(__name__).exception("Unhandled error on %s", request.url.path)
+    if request.url.path.startswith("/voice/command"):
+        return JSONResponse(
+            {
+                "transcript": "",
+                "reply": f"Unhandled server error ({type(exc).__name__}: {exc}). Please try again.",
+                "requires_permission": False,
+                "permission_request_id": None,
+                "routed_to": "master",
+                "route_reason": f"unhandled: {type(exc).__name__}",
+            },
+            status_code=200,
+        )
+    return JSONResponse({"detail": str(exc)}, status_code=500)
+

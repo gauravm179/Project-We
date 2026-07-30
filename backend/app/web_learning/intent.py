@@ -68,6 +68,27 @@ def is_learn_intent(message: str) -> bool:
     return bool(_LEARN_INTENT_PATTERN.search(message or ""))
 
 
+def is_chart_learn_ask(message: str) -> bool:
+    """True for 'learn to read charts' / TradingView teaching asks."""
+    text = (message or "").lower()
+    if not is_learn_intent(text):
+        return False
+    return any(
+        key in text
+        for key in (
+            "chart",
+            "charts",
+            "candlestick",
+            "candle",
+            "tradingview",
+            "trade chart",
+            "price chart",
+            "forex chart",
+            "stock chart",
+        )
+    )
+
+
 def message_needs_web_assist(message: str) -> bool:
     return bool(extract_urls(message) or extract_search_query(message))
 

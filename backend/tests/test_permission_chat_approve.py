@@ -42,8 +42,8 @@ def test_chat_yes_approves_and_retries_web_request(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ):
     html = (
-        "<html><head><title>Trading Chart Guide</title></head>"
-        "<body><p>" + ("Candlestick basics. " * 40) + "</p></body></html>"
+        "<html><head><title>API Docs</title></head>"
+        "<body><p>" + ("Dependency injection notes. " * 40) + "</p></body></html>"
     )
 
     class FakeResponse:
@@ -71,23 +71,19 @@ def test_chat_yes_approves_and_retries_web_request(
     async def fake_search(self, query: str, *, limit: int = 5) -> list[SearchResult]:
         return [
             SearchResult(
-                title="How to read candlestick charts",
-                url="https://example.com/candles",
-                snippet="Open high low close explained",
+                title="Docs",
+                url="https://example.com/api-docs",
+                snippet="Official docs",
             )
         ]
 
     monkeypatch.setattr("app.web_learning.service.httpx.AsyncClient", FakeClient)
     monkeypatch.setattr("app.web_learning.search.WebSearchClient.search", fake_search)
 
+    # Non-chart URL ask still requires internet permission before capture.
     blocked = client.post(
         "/chat",
-        json={
-            "message": (
-                "https://www.tradingview.com/chart/. "
-                "Can you go through website use the web bot and learn how to read trade charts"
-            )
-        },
+        json={"message": "Explain this page https://example.com/api-docs"},
     )
     assert blocked.status_code == 200
     body = blocked.json()
@@ -100,7 +96,7 @@ def test_chat_yes_approves_and_retries_web_request(
     reply = approved.json()
     assert reply["requires_permission"] is False
     text = reply["response"].lower()
-    assert "internet access approved" in text or "candlestick" in text or "web learner" in text
+    assert "internet access approved" in text or "api" in text or "web learner" in text or "docs" in text
 
     pending = client.get("/permissions?status=pending").json()
     assert pending == []
@@ -112,9 +108,9 @@ def test_voice_yes_approves_pending_internet(
     async def fake_search(self, query: str, *, limit: int = 5) -> list[SearchResult]:
         return [
             SearchResult(
-                title="Chart reading",
-                url="https://example.com/charts",
-                snippet="Support and resistance",
+                title="Docs",
+                url="https://example.com/page",
+                snippet="Useful page",
             )
         ]
 
@@ -130,7 +126,7 @@ def test_voice_yes_approves_pending_internet(
 
         async def get(self, url, headers=None):
             class FakeResponse:
-                text = "<html><title>Guide</title><body>" + ("chart " * 80) + "</body></html>"
+                text = "<html><title>Guide</title><body>" + ("content " * 80) + "</body></html>"
                 content = b""
                 headers = {"content-type": "text/html"}
 
@@ -145,7 +141,7 @@ def test_voice_yes_approves_pending_internet(
     blocked = client.post(
         "/voice/command",
         json={
-            "transcript": "https://example.com/charts learn how to read trade charts",
+            "transcript": "Read this page https://example.com/page",
             "shared": True,
             "speak": False,
         },
@@ -160,4 +156,4 @@ def test_voice_yes_approves_pending_internet(
     assert approved.status_code == 200
     data = approved.json()
     assert data.get("requires_permission") is False
-    assert "approved" in data["reply"].lower() or "chart" in data["reply"].lower()
+    assert "approved" in data["reply"].lower() or "page" in data["reply"].lower() or "web" in data["reply"].lower()
