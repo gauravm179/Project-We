@@ -281,3 +281,21 @@ class BotLearning(Base):
         default=lambda: datetime.now(timezone.utc),
         nullable=False,
     )
+
+
+class TradingWebhookEvent(Base):
+    """Inbound TradingView / alert webhook payloads for trading-bot."""
+
+    __tablename__ = "trading_webhook_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    source: Mapped[str] = mapped_column(String(64), nullable=False, default="tradingview")
+    ticker: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    action: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    payload_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    storage_path: Mapped[str] = mapped_column(String(512), nullable=False, default="")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )

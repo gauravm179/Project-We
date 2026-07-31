@@ -28,7 +28,10 @@ def test_intent_detects_urls_and_search_queries():
     q = extract_search_query("show me current affairs")
     assert q is not None
     assert "news" in q.lower() or "current" in q.lower()
+    assert "show me current affairs" not in q.lower()
     assert message_needs_web_assist("show me current affairs") is True
+    q2 = extract_search_query("current affair for today")
+    assert q2 == "top world news stories today"
 
 
 def test_web_search_requires_permission(client: TestClient):
@@ -56,7 +59,7 @@ def test_web_search_stores_results(client: TestClient, monkeypatch: pytest.Monke
     assert resp.status_code == 200
     data = resp.json()
     assert data["search_id"] >= 1
-    assert data["engine"] in {"duckduckgo", "bing"}
+    assert data["engine"] in {"duckduckgo", "bing", "google"}
     assert data["query"] == "python asyncio"
     assert data["result_count"] == 1
     assert data["results"][0]["url"] == "https://example.com/result"
@@ -122,3 +125,27 @@ def test_coding_bot_url_delegation_requires_permission(client: TestClient):
     data = resp.json()
     assert data["requires_permission"] is True
     assert data["required_capability"] == "internet"
+
+
+def test_google_is_default_search_engine():
+    from app.core.config import get_settings
+
+    get_settings.cache_clear()
+    assert get_settings().web_search_engine == "google"
+
+
+def test_parse_google_html_extracts_results():
+    from app.web_learning.search import WebSearchClient
+
+    html = """
+    <html><body>
+      <a href="/url?q=https://example.com/story&amp;sa=U">
+        <h3>Example Story About Markets Today</h3>
+      </a>
+      <div class="VwiC3b">Markets rose after the announcement.</div>
+    </body></html>
+    """
+    hits = WebSearchClient(engine="google")._parse_google(html, limit=3)
+    assert hits
+    assert hits[0].url.startswith("https://example.com/story")
+    assert "Example Story" in hits[0].title

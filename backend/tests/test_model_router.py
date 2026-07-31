@@ -9,6 +9,11 @@ def test_coding_specialist_always_tech():
     assert "coding" in choice.reason
 
 
+def test_trading_specialist_always_tech():
+    choice = choose_model_tier("hello", specialist_slug="trading-bot")
+    assert choice.tier == "tech"
+
+
 def test_casual_chat_uses_qwen_tier():
     choice = choose_model_tier("hey, how are you?")
     assert choice.tier == "chat"

@@ -306,11 +306,10 @@
 
     const MIN_SERVER = { major: 0, minor: 3, patch: 6 };
     const RESTART_HINT =
-      "OLD SERVER still running. In Terminal: Ctrl+C uvicorn → " +
-      "cd ~/Project-We && git checkout main && git pull origin main → " +
-      "cd backend && source .venv/bin/activate → " +
-      "uvicorn app.main:app --host 127.0.0.1 --port 8000 " +
-      "(no --reload). Hard-refresh this page until stamp shows Server 0.3.6+.";
+      "If stamp is below 0.3.6 or chart_fast_path=false: stop uvicorn, then " +
+      "cd ~/Project-We/backend && source .venv312/bin/activate && " +
+      "uvicorn app.main:app --host 127.0.0.1 --port 8000 (no --reload). " +
+      "Hard-refresh (Cmd+Shift+R) until stamp shows Server 0.3.6+.";
 
     function parseVersion(v) {
       const m = String(v || "").match(/^(\d+)\.(\d+)\.(\d+)/);
@@ -326,6 +325,16 @@
       return p.patch >= min.patch;
     }
 
+    function looksLikeFastChartAsk(text) {
+      const t = String(text || "").toLowerCase();
+      return (
+        t.includes("tradingview") ||
+        t.includes("trade chart") ||
+        t.includes("candlestick") ||
+        (t.includes("chart") && (t.includes("teach") || t.includes("learn") || t.includes("read")))
+      );
+    }
+
     async function sendCommand(transcript) {
       const text = (transcript || "").trim();
       if (!text) return;
@@ -338,7 +347,9 @@
       statusEl.textContent = "Working… sent to master bot (watch Terminal for MIDDLEWARE POST / voice/command)";
       statusEl.className = "status ok";
       const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 45000);
+      // Chart/learn is local+instant; other asks (news/search) may need longer.
+      const timeoutMs = looksLikeFastChartAsk(text) ? 15000 : 90000;
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
       try {
         const res = await fetch("/voice/command", {
           method: "POST",
@@ -356,7 +367,7 @@
           const err = data.detail || data.reply || `Voice command failed (HTTP ${res.status})`;
           append("system", typeof err === "string" ? err : JSON.stringify(err));
           append("system", RESTART_HINT);
-          statusEl.textContent = "Command failed — server likely outdated (need 0.3.6+)";
+          statusEl.textContent = "Command failed — check Terminal uvicorn logs";
           statusEl.className = "status error";
           return;
         }
@@ -375,14 +386,28 @@
         statusEl.className = "status ok";
       } catch (e) {
         const aborted = e && e.name === "AbortError";
+        let hint = RESTART_HINT;
+        try {
+          const health = await fetch("/health").then((r) => r.json());
+          if (
+            versionAtLeast(health.version, MIN_SERVER) &&
+            health.chart_fast_path === true
+          ) {
+            hint =
+              `Server ${health.version} is fine (chart_fast_path=true). ` +
+              "This ask took too long (news/web can be slow). Try again, or ask a chart/learn question for the instant path.";
+          }
+        } catch (_) {
+          /* keep restart hint */
+        }
         append(
           "system",
           aborted
-            ? "Timed out after 45s — TradingView/learn should answer instantly on 0.3.6. " + RESTART_HINT
+            ? `Timed out after ${Math.round(timeoutMs / 1000)}s. ${hint}`
             : `Request failed: ${e && e.message ? e.message : e}`
         );
         statusEl.textContent = aborted
-          ? "Timed out — restart uvicorn on 0.3.6"
+          ? "Timed out — see message above"
           : "Command failed — is uvicorn running?";
         statusEl.className = "status error";
       } finally {

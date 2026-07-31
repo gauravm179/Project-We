@@ -4,7 +4,8 @@ import re
 from dataclasses import dataclass
 from re import IGNORECASE
 
-from app.web_learning.intent import message_needs_web_assist
+from app.web_learning.intent import is_chart_curriculum_ask, message_needs_web_assist
+from app.trading.intent import is_trading_ask
 
 _CODING_PATTERN = re.compile(
     r"\b("
@@ -28,7 +29,8 @@ _WEB_LEARNER_PATTERN = re.compile(
 
 _EXPLICIT_SPECIALIST = re.compile(
     r"\b(?:ask|tell|use|call|send\s+to)\s+(?:the\s+)?"
-    r"(coding(?:[\s-]?bot)?|web(?:[\s-]?learner)?(?:[\s-]?bot)?|master(?:[\s-]?bot)?)\b",
+    r"(coding(?:[\s-]?bot)?|web(?:[\s-]?learner)?(?:[\s-]?bot)?|"
+    r"trading(?:[\s-]?bot)?|master(?:[\s-]?bot)?)\b",
     IGNORECASE,
 )
 
@@ -55,6 +57,8 @@ def route_message(message: str) -> RouteDecision:
         name = explicit.group(1).lower().replace(" ", "-").replace("_", "-")
         if "coding" in name:
             return RouteDecision(target="coding-bot", reason="explicit coding specialist")
+        if "trading" in name:
+            return RouteDecision(target="trading-bot", reason="explicit trading specialist")
         if "web" in name:
             return RouteDecision(target="web-learner-bot", reason="explicit web specialist")
         if "master" in name:
@@ -62,6 +66,14 @@ def route_message(message: str) -> RouteDecision:
 
     if _MASTER_OVERRIDE.search(text):
         return RouteDecision(target="master", reason="master override")
+
+    # Chart curriculum install stays on web-learner; trading owns live analysis.
+    if is_chart_curriculum_ask(text):
+        return RouteDecision(target="web-learner-bot", reason="chart curriculum install")
+
+    # Trading owns chart/trade/ticker asks (including TradingView alerts).
+    if is_trading_ask(text):
+        return RouteDecision(target="trading-bot", reason="trading/chart analysis")
 
     if _WEB_LEARNER_PATTERN.search(text) or message_needs_web_assist(text):
         return RouteDecision(target="web-learner-bot", reason="web search or URL")

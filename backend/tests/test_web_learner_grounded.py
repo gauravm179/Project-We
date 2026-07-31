@@ -43,6 +43,65 @@ def test_compose_grounded_skill_reply_teaches_from_evidence():
     assert "navigate to the following url" not in text.lower()
     assert "Candlestick" in text or "candlestick" in text.lower()
     assert "#9" in text or "Captured #9" in text
+    assert "tradingview canvas" in text.lower()
+
+
+def test_compose_news_briefing_not_link_dump():
+    assist = WebAssistResult(
+        context=(
+            "WEB LEARNER ASSIST for web-learner-bot:\n"
+            "Search #4 (duckduckgo): top world news stories today\n"
+            "1. Google News - World - Latest\n"
+            "   URL: https://news.google.com/topics/abc\n"
+            "   Read full articles, watch videos, browse thousands of titles and more\n"
+            "2. World | Latest News & Updates | BBC News\n"
+            "   URL: https://www.bbc.com/news/world\n"
+            "   Get all the latest news, live updates and content about the World from across the BBC.\n"
+            "3. India and Japan sign new trade pact\n"
+            "   URL: https://www.bbc.com/news/world-asia-123\n"
+            "   Leaders agreed a multi-year partnership covering semiconductors and clean energy.\n"
+            "Captured #12: BBC World (https://www.bbc.com/news/world)\n"
+            "Summary: Headlines: Storms disrupt flights across Europe | Cabinet clears new education policy | UN warns on climate targets"
+        ),
+        search_id=4,
+        capture_ids=(12,),
+    )
+    text = WebLearningService().compose_grounded_skill_reply(
+        "current affair for today",
+        assist,
+    )
+    lower = text.lower()
+    assert "fetched" in lower or "headlines" in lower or "briefing" in lower
+    assert "india and japan" in lower or "storms disrupt" in lower
+    assert "tradingview" not in lower
+    assert "what search found" not in lower
+    assert "read full articles, watch videos" not in lower
+    assert "https://news.google.com" not in text
+    assert "get all the latest news, live updates" not in lower
+    assert "why it" in lower or "themes" in lower or "questions" in lower
+
+
+def test_news_thinking_helpers_cluster_and_question():
+    from app.web_learning.news_curriculum import (
+        classify_themes,
+        follow_up_questions,
+        why_it_matters,
+    )
+
+    themes = classify_themes(
+        [
+            "If Hamas disarmament plan holds, Gaza war may shift",
+            "About 60,000 migrants arrive in Ceuta in 24 hours",
+            "Fifa says nobody selling football as plan continues",
+        ]
+    )
+    names = {t for t, _ in themes}
+    assert "Geopolitics / conflict" in names
+    assert "Migration / borders" in names
+    assert why_it_matters(themes)
+    qs = follow_up_questions(themes)
+    assert len(qs) >= 2
+    assert any("?" in q for q in qs)
 
 
 def test_web_learner_chat_uses_skills_not_browser_fluff(

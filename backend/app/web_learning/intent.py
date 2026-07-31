@@ -59,9 +59,8 @@ def extract_search_query(message: str) -> str | None:
 
     # News / current affairs → real web search (not Ollama guessing).
     if _NEWS_ASK_PATTERN.search(text):
-        cleaned = _FILLER_PATTERN.sub(" ", text)
-        cleaned = re.sub(r"\s+", " ", cleaned).strip(" .?!")
-        return f"current world news headlines today {cleaned or text}"
+        # Prefer article-style hits over bare section portals.
+        return 'top world news stories today'
 
     # "learn how to read trade charts" + a URL → search educational pages
     # (JS chart apps like TradingView don't yield useful HTML text alone).

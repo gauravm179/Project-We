@@ -22,6 +22,7 @@ from app.api.routes import (
     safety,
     skills,
     specialists,
+    trading,
     voice,
     web,
 )
@@ -59,7 +60,7 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(
     title="Project We",
-    version="0.3.6",
+    version="0.3.9",
     lifespan=lifespan,
 )
 
@@ -125,6 +126,7 @@ app.include_router(safety.router)
 app.include_router(specialists.router)
 app.include_router(skills.router)
 app.include_router(web.router)
+app.include_router(trading.router)
 app.include_router(voice.router)
 app.include_router(runtime.router)
 
@@ -149,7 +151,10 @@ def web_learner_ui() -> FileResponse:
 
 @app.get("/voice-ui", include_in_schema=False)
 def voice_ui() -> FileResponse:
-    return FileResponse(STATIC_DIR / "voice.html")
+    return FileResponse(
+        STATIC_DIR / "voice.html",
+        headers={"Cache-Control": "no-store, max-age=0"},
+    )
 
 
 app.mount("/ui", StaticFiles(directory=STATIC_DIR, html=True), name="ui")

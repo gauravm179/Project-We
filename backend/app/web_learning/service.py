@@ -6,6 +6,7 @@ import json
 import logging
 import re
 from dataclasses import dataclass
+from html import unescape
 from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import urljoin, urlparse
@@ -21,10 +22,11 @@ from app.web_learning.intent import (
     extract_search_query,
     extract_urls,
     is_learn_intent,
+    is_news_ask,
     is_valid_http_url,
     message_needs_web_assist,
 )
-from app.web_learning.search import SearchResult, WebSearchClient
+from app.web_learning.search import SearchResult, WebSearchClient, fetch_news_headlines
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +48,79 @@ def _is_js_heavy_url(url: str) -> bool:
     if "chart" in path and any(x in host for x in ("trading", "finance", "stock")):
         return True
     return False
+
+
+_WEAK_NEWS_HOSTS = (
+    "news.google.com",
+    "google.com",
+    "bing.com",
+    "duckduckgo.com",
+)
+_WEAK_NEWS_SNIPPET_MARKERS = (
+    "read full articles",
+    "watch videos, browse thousands",
+    "latest news and breaking news today",
+    "get all the latest news, live updates",
+    "follow the latest international",
+    "stay informed with top world news",
+    "from your trusted online news source",
+    "aims to keep you up-to-date",
+    "breaking stories and global current events",
+)
+_WEAK_NEWS_TITLE_MARKERS = (
+    "latest top stories",
+    "latest news & updates",
+    "top & breaking world news",
+    "google news",
+)
+
+
+def _is_weak_news_hit(title: str, url: str, snippet: str) -> bool:
+    """True for aggregator/portal hits that don't carry a usable headline."""
+    host = (urlparse(url).netloc or "").lower().removeprefix("www.")
+    if any(host == h or host.endswith("." + h) for h in _WEAK_NEWS_HOSTS):
+        return True
+    path = (urlparse(url).path or "").rstrip("/")
+    snippet_l = (snippet or "").lower()
+    title_l = (title or "").lower()
+    if any(m in snippet_l for m in _WEAK_NEWS_SNIPPET_MARKERS):
+        return True
+    if any(m in title_l for m in _WEAK_NEWS_TITLE_MARKERS):
+        return True
+    if title_l.startswith("google news") or title_l in {"cnn", "bbc news", "world"}:
+        return True
+    # Bare section pages (…/world, …/news) usually aren't article headlines.
+    if path in {"", "/", "/news", "/news/world", "/world", "/world-news"}:
+        return True
+    if len((snippet or "").strip()) < 40:
+        return True
+    return False
+
+
+def _extract_news_headlines(html: str, *, limit: int = 8) -> list[str]:
+    """Pull likely article headlines from a news HTML page."""
+    headlines: list[str] = []
+    seen: set[str] = set()
+    patterns = (
+        r"<h[123][^>]*>\s*(?:<a[^>]*>)?\s*([^<]{20,160})\s*(?:</a>)?\s*</h[123]>",
+        r'<a[^>]+href="[^"]*(?:/news/|/world/|/article|/story|/current-affairs)[^"]*"[^>]*>\s*([^<]{25,160})\s*</a>',
+    )
+    for pattern in patterns:
+        for match in re.finditer(pattern, html, re.IGNORECASE | re.DOTALL):
+            title = re.sub(r"\s+", " ", unescape(match.group(1))).strip(" -|•")
+            key = title.lower()
+            if (
+                len(title) < 25
+                or key in seen
+                or any(m in key for m in _WEAK_NEWS_TITLE_MARKERS)
+                or key.startswith(("skip to", "sign in", "subscribe", "menu", "search"))
+            ):
+                continue
+            seen.add(key)
+            headlines.append(title)
+            if len(headlines) >= limit:
+                return headlines
+    return headlines
 
 
 class _TextExtractor(HTMLParser):
@@ -248,15 +323,49 @@ class WebLearningService:
                         "web-search-done",
                         f"#{search.search_id} hits={search.result_count} engine={search.engine}",
                     )
-                    parts.append(f"Search #{search.search_id} ({search.engine}): {search.query}")
-                    for idx, result in enumerate(search.results, start=1):
+                    # Current affairs: prefer live RSS article headlines over portal SERP pages.
+                    news_hits: list[SearchResult] = []
+                    if is_news_ask(message):
+                        progress.step("web-rss", "Fetching live news RSS headlines")
+                        try:
+                            news_hits = await fetch_news_headlines(limit=8)
+                        except Exception as exc:  # noqa: BLE001
+                            logger.warning("RSS headline fetch failed: %s", exc)
+                            progress.step("web-rss-error", f"{type(exc).__name__}: {exc}")
+                        if news_hits:
+                            progress.step("web-rss-done", f"rss_hits={len(news_hits)}")
+
+                    display_results = news_hits or list(search.results)
+                    source_label = "rss+search" if news_hits else search.engine
+                    parts.append(
+                        f"Search #{search.search_id} ({source_label}): {search.query}"
+                    )
+                    for idx, result in enumerate(display_results, start=1):
                         parts.append(
                             f"{idx}. {result.title}\n   URL: {result.url}\n   {result.snippet}"
                         )
-                    # Learning asks: capture one educational page (keep Mac asks fast).
-                    if is_learn_intent(message) and auto_capture_urls:
-                        for result in search.results[:3]:
+                    # Learning + news: capture readable pages so replies aren't just link dumps.
+                    # When RSS already gave real headlines, skip slow page captures.
+                    should_capture = (
+                        auto_capture_urls
+                        and (
+                            is_learn_intent(message)
+                            or (is_news_ask(message) and not news_hits)
+                        )
+                    )
+                    capture_budget = 1
+                    capture_candidates = news_hits[:3] if news_hits else search.results[:6]
+                    if should_capture:
+                        captured_n = 0
+                        for result in capture_candidates:
+                            if captured_n >= capture_budget:
+                                break
                             if not is_valid_http_url(result.url) or _is_js_heavy_url(result.url):
+                                continue
+                            if (
+                                not is_news_ask(message)
+                                and _is_weak_news_hit(result.title, result.url, result.snippet)
+                            ):
                                 continue
                             progress.step("web-capture", f"Reading {result.url[:120]}")
                             try:
@@ -273,6 +382,7 @@ class WebLearningService:
                                 continue
                             if isinstance(captured, CaptureResult):
                                 capture_ids.append(captured.capture_id)
+                                captured_n += 1
                                 progress.step(
                                     "web-capture-done",
                                     f"#{captured.capture_id} chars={captured.text_chars}",
@@ -281,7 +391,8 @@ class WebLearningService:
                                     f"Captured #{captured.capture_id}: {captured.title} ({captured.url})\n"
                                     f"Summary: {captured.summary}"
                                 )
-                                break
+                                if not is_news_ask(message):
+                                    break
 
         if auto_capture_urls:
             for url in extract_urls(message)[:max_url_captures]:
@@ -381,11 +492,16 @@ class WebLearningService:
             return {"error": "URL did not return HTML content"}
 
         title_match = re.search(r"<title[^>]*>(.*?)</title>", html, re.IGNORECASE | re.DOTALL)
-        title = re.sub(r"\s+", " ", title_match.group(1)).strip() if title_match else url
+        title = re.sub(r"\s+", " ", unescape(title_match.group(1))).strip() if title_match else url
 
         parser = _TextExtractor()
         parser.feed(html)
         page_text = parser.text()
+        headlines = _extract_news_headlines(html, limit=8)
+        if headlines:
+            summary = "Headlines: " + " | ".join(headlines[:6])
+        else:
+            summary = page_text[:500]
 
         image_urls = self._extract_image_urls(html, base_url=url)[:max_images]
 
@@ -393,7 +509,7 @@ class WebLearningService:
             specialist_id=specialist.id,
             url=url,
             title=title[:500],
-            summary=page_text[:500],
+            summary=summary[:800],
             text_chars=len(page_text),
             image_count=0,
             compressed_bytes=0,
@@ -477,7 +593,7 @@ class WebLearningService:
             text_chars=len(page_text),
             image_count=downloaded,
             compressed_bytes=compressed_total,
-            summary=page_text[:280] + ("..." if len(page_text) > 280 else ""),
+            summary=summary[:280] + ("..." if len(summary) > 280 else ""),
         )
 
     def list_captures(self, db: Session, specialist_slug: str, limit: int = 50) -> list[dict]:
@@ -564,10 +680,10 @@ class WebLearningService:
                 "with a URL or ‘search for …’ / ‘learn how to …’."
             )
 
-        search_lines: list[str] = []
+        search_hits: list[dict[str, str]] = []
         capture_lines: list[str] = []
         notes: list[str] = []
-        current_search_title = ""
+        current: dict[str, str] | None = None
         for raw in context.splitlines():
             line = raw.strip()
             if not line or line.startswith("WEB LEARNER ASSIST"):
@@ -579,6 +695,9 @@ class WebLearningService:
                 notes.append(line)
                 continue
             if line.startswith("Captured #"):
+                if current:
+                    search_hits.append(current)
+                    current = None
                 capture_lines.append(line)
                 continue
             if line.startswith("Summary:"):
@@ -587,15 +706,38 @@ class WebLearningService:
                 continue
             numbered = re.match(r"^(\d+)\.\s+(.*)$", line)
             if numbered:
-                current_search_title = numbered.group(2).strip()
-                search_lines.append(f"{numbered.group(1)}. {current_search_title}")
+                if current:
+                    search_hits.append(current)
+                current = {"title": numbered.group(2).strip(), "url": "", "snippet": ""}
                 continue
-            if line.startswith("URL:") and search_lines:
-                search_lines[-1] = f"{search_lines[-1]}\n   {line}"
+            if line.startswith("URL:") and current is not None:
+                current["url"] = line.removeprefix("URL:").strip()
                 continue
-            if search_lines and not line.startswith("Captured"):
+            if current is not None and not line.startswith("Captured"):
                 # snippet under a search hit
-                search_lines[-1] = f"{search_lines[-1]}\n   {line}"
+                if current["snippet"]:
+                    current["snippet"] += " " + line
+                else:
+                    current["snippet"] = line
+        if current:
+            search_hits.append(current)
+
+        if is_news_ask(user_message):
+            return self._compose_news_briefing(
+                search_hits=search_hits,
+                capture_lines=capture_lines,
+                notes=notes,
+                capture_ids=assist.capture_ids,
+            )
+
+        search_lines = [
+            (
+                f"{i}. {hit['title']}"
+                + (f"\n   URL: {hit['url']}" if hit["url"] else "")
+                + (f"\n   {hit['snippet']}" if hit["snippet"] else "")
+            )
+            for i, hit in enumerate(search_hits, start=1)
+        ]
 
         parts: list[str] = [
             "I used web-learner skills (web-search + read-web-page / compress-store-learning) "
@@ -658,11 +800,130 @@ class WebLearningService:
                 "After internet is approved, ask again to store tutorial pages locally."
             )
 
-        parts.append(
-            "\nI am not giving fake click-through steps for the live TradingView canvas — "
-            "that chart UI is JavaScript and not readable as plain HTML. "
-            "Teaching above comes from search/capture skill evidence and/or local chart skill."
-        )
+        topic = user_message.lower()
+        if "tradingview" in topic or "chart" in topic or "trade chart" in topic:
+            parts.append(
+                "\nI am not giving fake click-through steps for the live TradingView canvas — "
+                "that chart UI is JavaScript and not readable as plain HTML. "
+                "Teaching above comes from search/capture skill evidence and/or local chart skill."
+            )
+        return "\n".join(parts)
+
+    def _compose_news_briefing(
+        self,
+        *,
+        search_hits: list[dict[str, str]],
+        capture_lines: list[str],
+        notes: list[str],
+        capture_ids: tuple[int, ...],
+    ) -> str:
+        """Turn search/capture evidence into a readable current-affairs briefing."""
+        bullets: list[str] = []
+        sources: list[str] = []
+
+        for hit in search_hits:
+            title = (hit.get("title") or "").strip()
+            url = (hit.get("url") or "").strip()
+            snippet = re.sub(r"\s+", " ", (hit.get("snippet") or "").strip())
+            if not title:
+                continue
+            if _is_weak_news_hit(title, url, snippet):
+                continue
+            if snippet and len(snippet) >= 40:
+                bullets.append(f"• {title} — {snippet[:280]}")
+            else:
+                bullets.append(f"• {title}")
+            if url:
+                sources.append(url)
+            if len(bullets) >= 6:
+                break
+
+        capture_bits: list[str] = []
+        for line in capture_lines[:4]:
+            title_match = re.match(r"Captured #\d+:\s+(.*?)\s+\((https?://[^)]+)\)", line)
+            summary_match = re.search(r"Summary:\s*(.+)$", line, re.DOTALL)
+            summary = re.sub(r"\s+", " ", (summary_match.group(1) if summary_match else "").strip())
+            if title_match:
+                title, url = title_match.group(1).strip(), title_match.group(2).strip()
+                if url and url not in sources:
+                    sources.append(url)
+            else:
+                title = ""
+            if summary.lower().startswith("headlines:"):
+                for piece in summary.split(":", 1)[1].split("|"):
+                    piece = piece.strip(" -•")
+                    if len(piece) >= 25 and not _is_weak_news_hit(piece, "", ""):
+                        capture_bits.append(f"• {piece}")
+            elif summary and len(summary) >= 40 and not any(
+                m in summary.lower() for m in _WEAK_NEWS_SNIPPET_MARKERS
+            ):
+                label = f"From {title}: " if title else ""
+                capture_bits.append(f"• {label}{summary[:420]}")
+            elif title and not any(m in title.lower() for m in _WEAK_NEWS_TITLE_MARKERS):
+                capture_bits.append(f"• Read more on: {title}")
+
+        # Prefer scraped page headlines when search only returned portals.
+        if capture_bits and len(bullets) < 2:
+            bullets = capture_bits[:6]
+            capture_bits = []
+        elif capture_bits:
+            # Avoid duplicating the same lines under both sections.
+            capture_bits = [b for b in capture_bits if b not in bullets][:6]
+
+        parts: list[str] = [
+            "Current-affairs briefing (evidence first, then thinking):",
+            "",
+        ]
+        if bullets:
+            parts.append("1) What I fetched (facts from sources)")
+            parts.extend(bullets[:8])
+        if capture_bits:
+            parts.append("")
+            parts.append("Extra notes from pages I read")
+            parts.extend(capture_bits)
+        if not bullets and not capture_bits:
+            parts.append(
+                "Search mostly returned news portals without clear article headlines. "
+                "Approve internet if needed, then ask again — or ask about a specific topic "
+                "(e.g. “India current affairs today” or “US politics headlines”)."
+            )
+            if notes:
+                parts.append("Notes: " + "; ".join(notes[:3]))
+        else:
+            from app.web_learning.news_curriculum import (
+                classify_themes,
+                follow_up_questions,
+                strip_bullet,
+                why_it_matters,
+            )
+
+            theme_input = [strip_bullet(b) for b in (bullets or capture_bits)[:8]]
+            themes = classify_themes(theme_input)
+            parts.append("")
+            parts.append("2) How I'm thinking (themes)")
+            for theme, items in themes:
+                parts.append(f"• {theme}: {len(items)} item(s)")
+
+            parts.append("")
+            parts.append("3) Why it may matter (analysis — not new facts)")
+            for note in why_it_matters(themes):
+                parts.append(f"• {note}")
+
+            parts.append("")
+            parts.append("4) Questions worth asking next")
+            for q in follow_up_questions(themes):
+                parts.append(f"• {q}")
+
+        if sources:
+            parts.append("")
+            parts.append("Sources")
+            for url in sources[:6]:
+                parts.append(f"- {url}")
+        if capture_ids:
+            parts.append(
+                "Stored locally as capture IDs: "
+                + ", ".join(f"#{cid}" for cid in capture_ids)
+            )
         return "\n".join(parts)
 
     def build_learning_context(self, db: Session, specialist_id: int, limit: int = 5) -> str:
