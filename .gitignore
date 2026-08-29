@@ -29,4 +29,5 @@ logs/
 data/trading/
 data/trading_curriculum/
 data/news_curriculum/
+data/trading_ta_kb/
 backend/package-lock.json

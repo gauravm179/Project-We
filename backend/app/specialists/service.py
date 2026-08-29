@@ -27,6 +27,8 @@ from app.web_learning.intent import (
 )
 from app.trading.intent import company_news_query, wants_company_news
 from app.trading.service import compose_trading_analysis, trading_system_addon
+from app.trading.ta_kb import format_full_ta_reply, install_full_ta_kb, is_ta_kb_install_ask
+from app.trading.ta_curriculum import build_ta_kb_brief
 from app.trading.web_learn import (
     TradingWebLearnResult,
     format_learn_reply,
@@ -173,6 +175,53 @@ class SpecialistService:
         # Trading-bot: chart knowledge + optional company news via web-learner.
         if slug == "trading-bot":
             from app.progress import progress
+
+            # Full TA KB: all chart types, patterns, indicators, scenarios (local + optional web).
+            if is_ta_kb_install_ask(user_message):
+                progress.step("ta-kb", "Installing full technical analysis knowledge base")
+                local, web_result = await install_full_ta_kb(
+                    db,
+                    self._web_learning,
+                    user_message=user_message,
+                    fetch_web=internet_approved,
+                )
+                if web_result and web_result.requires_permission:
+                    blocked = self._web_learning._permission_block(  # noqa: SLF001
+                        db,
+                        "trading-bot needs internet to fetch TradingView/Zerodha TA pages",
+                    )
+                    assistant_text = format_full_ta_reply(
+                        local, web_result, internet_approved=False
+                    )
+                    db.add(
+                        SpecialistMessage(
+                            specialist_id=row.id, role="assistant", content=assistant_text
+                        )
+                    )
+                    db.commit()
+                    return SpecialistChatReply(
+                        specialist_slug=row.slug,
+                        specialist_name=row.name,
+                        response=assistant_text,
+                        requires_permission=True,
+                        required_capability="internet",
+                        permission_request_id=int(blocked["permission_request_id"]),  # type: ignore[arg-type]
+                    )
+                assistant_text = format_full_ta_reply(
+                    local, web_result, internet_approved=internet_approved
+                )
+                db.add(
+                    SpecialistMessage(
+                        specialist_id=row.id, role="assistant", content=assistant_text
+                    )
+                )
+                db.commit()
+                progress.step("ta-kb-done", f"topics={local.get('topic_count')}")
+                return SpecialistChatReply(
+                    specialist_slug=row.slug,
+                    specialist_name=row.name,
+                    response=assistant_text,
+                )
 
             # Explicit web-learn: Google Zerodha/TradingView/etc → save IMP notes.
             if is_trading_web_learn_ask(user_message):
@@ -346,6 +395,8 @@ class SpecialistService:
                 row.system_prompt
                 + "\n\n"
                 + trading_system_addon()
+                + "\n\n"
+                + build_ta_kb_brief(limit=25)
                 + "\n\nCRITICAL: Do not invent prices or news. "
                 "Use the grounded draft facts. No guaranteed profit claims."
             )

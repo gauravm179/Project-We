@@ -44,6 +44,7 @@ TRADING_SKILL_PARAMETERS: dict[str, dict] = {}
 def bootstrap_trading_bot(db: Session) -> None:
     from app.schemas.specialist import SpecialistUpdate
     from app.specialists.service import SpecialistService
+    from app.trading.ta_curriculum import install_ta_kb_local
 
     train_specialist(db, TRADING_BOT, TRADING_BOOTSTRAP_SKILLS, TRADING_SKILL_PARAMETERS)
     # Always keep trading-bot enabled after refresh.
@@ -51,3 +52,10 @@ def bootstrap_trading_bot(db: Session) -> None:
         db, TRADING_BOT_SLUG, SpecialistUpdate(enabled=True)
     )
     install_trading_curriculum(db)
+    # Offline TA KB (all chart types, patterns, indicators, scenarios).
+    try:
+        install_ta_kb_local(db)
+    except Exception as exc:  # noqa: BLE001
+        import logging
+
+        logging.getLogger(__name__).warning("TA KB bootstrap skipped: %s", exc)

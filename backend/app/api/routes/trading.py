@@ -11,6 +11,8 @@ from app.learning.local_store import LocalLearningStore
 from app.policy.service import PolicyService
 from app.specialists.service import SpecialistService
 from app.trading.intent import format_webhook_as_user_message
+from app.trading.ta_curriculum import TA_TOPICS, install_ta_kb_local
+from app.trading.ta_kb import format_full_ta_reply, install_full_ta_kb
 from app.trading.web_learn import format_learn_reply, run_trading_web_learn
 from app.trading.webhooks import TradingWebhookService
 from app.web_learning.service import WebLearningService
@@ -45,14 +47,18 @@ class TradingStatus(BaseModel):
     enabled: bool = True
     webhook_url: str = "/trading/webhooks/tradingview"
     learn_url: str = "/trading/learn"
+    ta_kb_url: str = "/trading/install-ta-kb"
+    ta_kb_topics: int = 0
     recent_count: int = 0
     imp_notes: int = 0
     internet_approved: bool = False
-    chart_skills: str = "line, bar, candle, heikin-ashi, area/baseline, volume, trend, S/R"
+    chart_skills: str = (
+        "line, bar, candle, HA, renko, kagi, P&F, range, patterns, indicators, scenarios"
+    )
     notes: str = (
-        "Send TradingView alerts to POST /trading/webhooks/tradingview. "
-        "POST /trading/learn to Google Zerodha/TradingView and save IMP notes. "
-        "Ask the trading bot about a ticker to combine chart skills + company news + saved notes."
+        "POST /trading/install-ta-kb for full local TA database (all chart types + technicals). "
+        "POST /trading/learn to fetch TradingView/Zerodha pages. "
+        "POST /trading/webhooks/tradingview for alerts."
     )
 
 
@@ -74,6 +80,15 @@ class TradingLearnResponse(BaseModel):
     saved: list[dict[str, Any]] = Field(default_factory=list)
 
 
+class TradingTaKbResponse(BaseModel):
+    topic_count: int
+    categories: list[str] = Field(default_factory=list)
+    web_saved: int = 0
+    requires_permission: bool = False
+    permission_request_id: int | None = None
+    reply: str
+
+
 class TradingLearningItem(BaseModel):
     id: int
     kind: str
@@ -88,12 +103,13 @@ def trading_status(db: Session = Depends(get_db)) -> TradingStatus:
     recent = _webhooks.recent(db, limit=5)
     notes = [
         n
-        for n in _learnings.list_learnings(db, bot_slug="trading-bot", limit=50)
-        if n.kind in {"trading-imp", "trading-session", "web"}
+        for n in _learnings.list_learnings(db, bot_slug="trading-bot", limit=100)
+        if n.kind in {"trading-imp", "trading-session", "web", "ta-kb"}
     ]
     bot = _specialists.get_by_slug(db, "trading-bot")
     return TradingStatus(
         enabled=bool(bot.enabled) if bot else False,
+        ta_kb_topics=len(TA_TOPICS),
         recent_count=len(recent),
         imp_notes=len(notes),
         internet_approved=PolicyService().has_approved_capability(db, "internet"),
@@ -107,7 +123,7 @@ def list_trading_learnings(
     rows = _learnings.list_learnings(db, bot_slug="trading-bot", limit=min(max(limit, 1), 100))
     out: list[TradingLearningItem] = []
     for r in reversed(rows):
-        if r.kind not in {"trading-imp", "trading-session", "web", "method"}:
+        if r.kind not in {"trading-imp", "trading-session", "web", "method", "ta-kb"}:
             continue
         created = r.created_at.isoformat() if hasattr(r.created_at, "isoformat") else str(r.created_at)
         out.append(
@@ -157,6 +173,43 @@ async def trading_learn(
             }
             for s in result.saved
         ],
+    )
+
+
+@router.post("/install-ta-kb", response_model=TradingTaKbResponse)
+async def install_ta_kb(
+    fetch_web: bool = True,
+    db: Session = Depends(get_db),
+) -> TradingTaKbResponse:
+    """Install full local TA KB (all chart types, patterns, indicators, scenarios)."""
+    internet = PolicyService().has_approved_capability(db, "internet")
+    local, web_result = await install_full_ta_kb(
+        db,
+        _web,
+        fetch_web=fetch_web and internet,
+    )
+    reply = format_full_ta_reply(local, web_result, internet_approved=internet)
+    return TradingTaKbResponse(
+        topic_count=int(local.get("topic_count") or 0),
+        categories=[str(c) for c in (local.get("categories") or [])],
+        web_saved=len(web_result.saved) if web_result else 0,
+        requires_permission=bool(web_result and web_result.requires_permission),
+        permission_request_id=(
+            web_result.permission_request_id if web_result else None
+        ),
+        reply=reply,
+    )
+
+
+@router.post("/install-ta-kb/local", response_model=TradingTaKbResponse)
+def install_ta_kb_local_only(db: Session = Depends(get_db)) -> TradingTaKbResponse:
+    """Offline-only TA KB install (no internet)."""
+    local = install_ta_kb_local(db)
+    reply = format_full_ta_reply(local, None, internet_approved=False)
+    return TradingTaKbResponse(
+        topic_count=int(local.get("topic_count") or 0),
+        categories=[str(c) for c in (local.get("categories") or [])],
+        reply=reply,
     )
 
 

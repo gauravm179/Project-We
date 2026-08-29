@@ -131,6 +131,7 @@
       <div class="section">Learn from internet</div>
       <p class="muted">Google trusted sites, pick useful pages, save IMP notes locally.</p>
       <button type="button" id="learn-btn">Learn from Zerodha + TradingView</button>
+      <button type="button" class="secondary" id="ta-kb-btn" style="margin-top:8px">Install full TA KB (all charts)</button>
       <button type="button" class="secondary" id="approve-btn" style="margin-top:8px">Approve internet</button>
       <div class="section">Saved IMP notes</div>
       <ul id="learnings" class="list"></ul>
@@ -201,7 +202,7 @@
       const data = await res.json();
       el.textContent =
         `Bot ${data.enabled ? "enabled" : "disabled"} · internet ${data.internet_approved ? "on" : "off"} · ` +
-        `IMP notes: ${data.imp_notes} · alerts: ${data.recent_count}`;
+        `TA topics: ${data.ta_kb_topics || "?"} · IMP notes: ${data.imp_notes} · alerts: ${data.recent_count}`;
       urlEl.textContent = `POST ${location.origin}${data.webhook_url}`;
     }
 
@@ -262,6 +263,18 @@
     }
 
     document.getElementById("approve-btn").addEventListener("click", approveInternet);
+
+    document.getElementById("ta-kb-btn").addEventListener("click", async () => {
+      const status = document.getElementById("status");
+      status.textContent = "Installing full TA KB (all chart types + technicals)…";
+      addMsg("user", "Install all chart types and technical analysis locally");
+      const res = await fetch("/trading/install-ta-kb?fetch_web=true", { method: "POST" });
+      const data = await res.json();
+      addMsg("assistant", data.reply || "TA KB installed");
+      status.textContent = `TA KB: ${data.topic_count} topics, web saved: ${data.web_saved || 0}`;
+      loadLearnings();
+      loadTradingStatus();
+    });
 
     document.getElementById("learn-btn").addEventListener("click", async () => {
       const status = document.getElementById("status");
