@@ -4,8 +4,9 @@ import re
 from dataclasses import dataclass
 from re import IGNORECASE
 
-from app.web_learning.intent import is_chart_curriculum_ask, message_needs_web_assist
 from app.trading.intent import is_trading_ask
+from app.trading.web_learn import is_trading_web_learn_ask
+from app.web_learning.intent import is_chart_curriculum_ask, message_needs_web_assist
 
 _CODING_PATTERN = re.compile(
     r"\b("
@@ -71,8 +72,8 @@ def route_message(message: str) -> RouteDecision:
     if is_chart_curriculum_ask(text):
         return RouteDecision(target="web-learner-bot", reason="chart curriculum install")
 
-    # Trading owns chart/trade/ticker asks (including TradingView alerts).
-    if is_trading_ask(text):
+    # Trading owns chart/trade/ticker asks and web-learn from Zerodha/TradingView.
+    if is_trading_web_learn_ask(text) or is_trading_ask(text):
         return RouteDecision(target="trading-bot", reason="trading/chart analysis")
 
     if _WEB_LEARNER_PATTERN.search(text) or message_needs_web_assist(text):

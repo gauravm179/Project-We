@@ -28,7 +28,7 @@ _TRADING_ASK_PATTERN = re.compile(
     r"long\s+setup|short\s+setup|buy\s+setup|sell\s+setup|"
     r"entry|stop[\s-]?loss|take[\s-]?profit|risk[\s/]?reward|"
     r"chart\s+(?:read|analysis|setup)|technical\s+analysis|"
-    r"tradingview|webhook|alert\s+fired|price\s+action|"
+    r"tradingview|zerodha|varsity|webhook|alert\s+fired|price\s+action|"
     r"predict|prediction|outlook|bias|"
     r"trading[\s-]?bot|ask\s+(?:the\s+)?trading"
     r")\b",

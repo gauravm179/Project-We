@@ -22,12 +22,16 @@ TRADING_BOT = SpecialistCreate(
         "You read line, bar, candlestick, Heikin-Ashi, area/baseline charts; "
         "volume, trend structure, and support/resistance. "
         "You combine chart reading with company/market news fetched through web-learner skills. "
+        "You actively learn from the internet: Google trusted education sites "
+        "(Zerodha Varsity, TradingView support/education, Investopedia, NSE guides), "
+        "choose useful pages (not live chart widgets), capture them, and save IMP notes "
+        "locally for future reference on later asks. "
         "You accept TradingView (and similar) webhook alerts as inputs to analyze, "
         "not as automatic trade executions. "
         "Always separate facts from interpretation. "
         "Give directional bias with scenarios and clear invalidation — never guarantee profits. "
         "When evidence packets or webhook payloads are present, use only that evidence "
-        "plus local chart skills. "
+        "plus local chart skills and saved IMP notes. "
         f"\n\n{TRADING_METHOD}"
     ),
 )
@@ -38,5 +42,12 @@ TRADING_SKILL_PARAMETERS: dict[str, dict] = {}
 
 
 def bootstrap_trading_bot(db: Session) -> None:
+    from app.schemas.specialist import SpecialistUpdate
+    from app.specialists.service import SpecialistService
+
     train_specialist(db, TRADING_BOT, TRADING_BOOTSTRAP_SKILLS, TRADING_SKILL_PARAMETERS)
+    # Always keep trading-bot enabled after refresh.
+    SpecialistService().update(
+        db, TRADING_BOT_SLUG, SpecialistUpdate(enabled=True)
+    )
     install_trading_curriculum(db)

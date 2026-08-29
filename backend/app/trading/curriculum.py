@@ -110,6 +110,17 @@ EXTRA_TRADING_LESSONS: tuple[dict[str, str], ...] = (
             "Respond with chart-consistent bias, invalidation, and whether news agrees or conflicts."
         ),
     },
+    {
+        "slug": "learn-from-trading-sites",
+        "name": "Learn From Trading Sites",
+        "summary": "Google Zerodha/TradingView/etc, pick pages, save IMP notes.",
+        "instructions": (
+            "When asked to learn from the internet or sites like Zerodha Varsity / TradingView: "
+            "search Google with site filters, prefer education pages over live chart widgets, "
+            "capture readable HTML, distill IMP notes, and store them in local learnings "
+            "for future recall. Do not invent content that was not on the page."
+        ),
+    },
 )
 
 

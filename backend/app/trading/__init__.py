@@ -9,6 +9,7 @@ from app.trading.intent import (
     wants_company_news,
 )
 from app.trading.service import compose_trading_analysis, trading_system_addon
+from app.trading.web_learn import is_trading_web_learn_ask, run_trading_web_learn
 from app.db.models import TradingWebhookEvent
 from app.trading.webhooks import TradingWebhookService
 
@@ -21,6 +22,8 @@ __all__ = [
     "format_webhook_as_user_message",
     "install_trading_curriculum",
     "is_trading_ask",
+    "is_trading_web_learn_ask",
+    "run_trading_web_learn",
     "trading_system_addon",
     "wants_company_news",
 ]

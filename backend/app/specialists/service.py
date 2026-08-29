@@ -27,6 +27,12 @@ from app.web_learning.intent import (
 )
 from app.trading.intent import company_news_query, wants_company_news
 from app.trading.service import compose_trading_analysis, trading_system_addon
+from app.trading.web_learn import (
+    TradingWebLearnResult,
+    format_learn_reply,
+    is_trading_web_learn_ask,
+    run_trading_web_learn,
+)
 from app.web_learning.service import WebAssistResult, WebLearningService
 from app.memory.service import MemoryService
 from app.policy.service import PolicyService
@@ -168,9 +174,94 @@ class SpecialistService:
         if slug == "trading-bot":
             from app.progress import progress
 
+            # Explicit web-learn: Google Zerodha/TradingView/etc → save IMP notes.
+            if is_trading_web_learn_ask(user_message):
+                progress.step("trading-web-learn", "Google trusted trading sites + save IMP")
+                if not internet_approved:
+                    blocked = self._web_learning._permission_block(  # noqa: SLF001
+                        db,
+                        "trading-bot needs internet to learn from Zerodha/TradingView/Google",
+                    )
+                    perm = TradingWebLearnResult(
+                        requires_permission=True,
+                        permission_request_id=int(blocked["permission_request_id"]),  # type: ignore[arg-type]
+                        message=str(
+                            blocked.get("message")
+                            or "Approve internet so trading-bot can Google and save IMP notes."
+                        ),
+                    )
+                    assistant_text = format_learn_reply(perm)
+                    db.add(
+                        SpecialistMessage(
+                            specialist_id=row.id, role="assistant", content=assistant_text
+                        )
+                    )
+                    db.commit()
+                    return SpecialistChatReply(
+                        specialist_slug=row.slug,
+                        specialist_name=row.name,
+                        response=assistant_text,
+                        requires_permission=True,
+                        required_capability="internet",
+                        permission_request_id=perm.permission_request_id,
+                    )
+                try:
+                    learn_result = await asyncio.wait_for(
+                        run_trading_web_learn(
+                            db,
+                            self._web_learning,
+                            user_message=user_message,
+                            max_queries=3,
+                            max_captures=3,
+                        ),
+                        timeout=75.0,
+                    )
+                except asyncio.TimeoutError:
+                    learn_result = TradingWebLearnResult(
+                        errors=["Web learn timed out — try again with a narrower topic."]
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    logger.exception("Trading web learn failed")
+                    learn_result = TradingWebLearnResult(errors=[str(exc)])
+
+                if learn_result.requires_permission:
+                    assistant_text = format_learn_reply(learn_result)
+                    db.add(
+                        SpecialistMessage(
+                            specialist_id=row.id, role="assistant", content=assistant_text
+                        )
+                    )
+                    db.commit()
+                    return SpecialistChatReply(
+                        specialist_slug=row.slug,
+                        specialist_name=row.name,
+                        response=assistant_text,
+                        requires_permission=True,
+                        required_capability="internet",
+                        permission_request_id=learn_result.permission_request_id,
+                    )
+
+                assistant_text = format_learn_reply(learn_result)
+                db.add(
+                    SpecialistMessage(
+                        specialist_id=row.id, role="assistant", content=assistant_text
+                    )
+                )
+                db.commit()
+                progress.step(
+                    "trading-web-learn-done",
+                    f"saved={len(learn_result.saved)} captured={learn_result.captured}",
+                )
+                return SpecialistChatReply(
+                    specialist_slug=row.slug,
+                    specialist_name=row.name,
+                    response=assistant_text,
+                )
+
             progress.step("trading", "Chart skills + optional company news")
             web_assist: WebAssistResult | dict[str, object] | None = None
             news_q = company_news_query(user_message) if wants_company_news(user_message) else None
+            # Also pull saved IMP notes into analysis memory (already via recall below).
             if news_q and internet_approved:
                 progress.step("trading-news", f"Fetching news: {news_q[:100]}")
                 try:
@@ -244,7 +335,7 @@ class SpecialistService:
             # Prefer grounded trading method; optional short polish with tech model.
             provider = build_provider(settings)
             memory_context = self._memory.recent_context(db=db)
-            stored = self._local_learnings.recall_context(db, slug, limit=6)
+            stored = self._local_learnings.recall_context(db, slug, limit=10)
             if stored:
                 memory_context = (
                     f"{memory_context}\n\n--- STORED LOCAL LEARNINGS ---\n{stored}"

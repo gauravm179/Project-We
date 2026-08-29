@@ -118,7 +118,7 @@
     <aside class="panel">
       <h1>Trading Bot</h1>
       <p class="muted">
-        Chart reading (candles, Heikin-Ashi, line/bar, volume, S/R) + company news via web-learner + TradingView webhooks.
+        Chart reading + company news + Google learning from Zerodha Varsity, TradingView education, Investopedia — IMP notes saved for later.
       </p>
       <p id="provider-status" class="muted">AI provider: loading…</p>
       <p id="trading-status" class="muted">Webhook status: loading…</p>
@@ -127,6 +127,13 @@
         <a href="/ui/voice.html">Voice</a> ·
         <a href="/ui/web-learner.html">Web</a>
       </div>
+
+      <div class="section">Learn from internet</div>
+      <p class="muted">Google trusted sites, pick useful pages, save IMP notes locally.</p>
+      <button type="button" id="learn-btn">Learn from Zerodha + TradingView</button>
+      <button type="button" class="secondary" id="approve-btn" style="margin-top:8px">Approve internet</button>
+      <div class="section">Saved IMP notes</div>
+      <ul id="learnings" class="list"></ul>
 
       <div class="section">TradingView webhook</div>
       <p class="muted">Point alerts to:</p>
@@ -140,7 +147,6 @@
   "message": "breakout above resistance"
 }</pre>
       <button type="button" class="secondary" id="sim-webhook-btn">Simulate sample alert</button>
-      <button type="button" class="secondary" id="approve-btn" style="margin-top:8px">Approve internet (news)</button>
 
       <div class="section">Recent webhooks</div>
       <ul id="webhooks" class="list"></ul>
@@ -149,10 +155,10 @@
 
     <main class="panel">
       <div id="messages" class="messages">
-        <div class="muted">Try: “Analyze AAPL chart bias with support/resistance and news”</div>
+        <div class="muted">Try: “learn from Zerodha Varsity candlesticks” or “Analyze AAPL with news”</div>
       </div>
       <form id="chat-form">
-        <textarea id="message-input" rows="4" placeholder="Analyze TSLA candle structure and outlook…" required></textarea>
+        <textarea id="message-input" rows="4" placeholder="Learn from TradingView support resistance… or analyze a ticker" required></textarea>
         <div style="height:8px"></div>
         <button type="submit">Ask trading-bot</button>
       </form>
@@ -189,12 +195,33 @@
       const el = document.getElementById("trading-status");
       const urlEl = document.getElementById("webhook-url");
       if (!res.ok) {
-        el.textContent = "Webhook status: unavailable";
+        el.textContent = "Status: unavailable";
         return;
       }
       const data = await res.json();
-      el.textContent = `Skills: ${data.chart_skills} · recent alerts: ${data.recent_count}`;
+      el.textContent =
+        `Bot ${data.enabled ? "enabled" : "disabled"} · internet ${data.internet_approved ? "on" : "off"} · ` +
+        `IMP notes: ${data.imp_notes} · alerts: ${data.recent_count}`;
       urlEl.textContent = `POST ${location.origin}${data.webhook_url}`;
+    }
+
+    async function loadLearnings() {
+      const res = await fetch("/trading/learnings?limit=10");
+      const list = document.getElementById("learnings");
+      if (!res.ok) {
+        list.innerHTML = "<li class='item'>None yet</li>";
+        return;
+      }
+      const items = await res.json();
+      if (!items.length) {
+        list.innerHTML = "<li class='item'>None yet — click Learn from Zerodha + TradingView</li>";
+        return;
+      }
+      list.innerHTML = items.map(n => `
+        <li class="item">
+          <strong>#${n.id}</strong> [${n.kind}] ${n.title}<br>
+          <span class="muted">${n.preview}</span>
+        </li>`).join("");
     }
 
     async function loadWebhooks() {
@@ -222,7 +249,7 @@
       const created = await fetch("/permissions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ capability: "internet", reason: "trading-bot company news" }),
+        body: JSON.stringify({ capability: "internet", reason: "trading-bot web learn + news" }),
       }).then(r => r.json());
       pendingPermissionId = created.id;
       const decided = await fetch(`/permissions/${created.id}/decision`, {
@@ -230,10 +257,34 @@
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ approve: true }),
       });
-      status.textContent = decided.ok ? "Internet approved for company news." : "Could not approve internet.";
+      status.textContent = decided.ok ? "Internet approved." : "Could not approve internet.";
+      loadTradingStatus();
     }
 
     document.getElementById("approve-btn").addEventListener("click", approveInternet);
+
+    document.getElementById("learn-btn").addEventListener("click", async () => {
+      const status = document.getElementById("status");
+      status.textContent = "Googling Zerodha / TradingView education pages…";
+      addMsg("user", "Learn from Zerodha Varsity and TradingView candlestick charts");
+      const res = await fetch("/trading/learn", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: "learn from Zerodha Varsity and TradingView candlestick charts",
+        }),
+      });
+      const data = await res.json();
+      if (data.requires_permission) {
+        addMsg("assistant", data.reply || "Approve internet first.");
+        status.textContent = "Internet permission needed — click Approve internet.";
+        return;
+      }
+      addMsg("assistant", data.reply || "Done");
+      status.textContent = `Saved ${data.saved_count || 0} IMP notes`;
+      loadLearnings();
+      loadTradingStatus();
+    });
 
     document.getElementById("sim-webhook-btn").addEventListener("click", async () => {
       const status = document.getElementById("status");
@@ -268,7 +319,7 @@
       if (!message) return;
       addMsg("user", message);
       input.value = "";
-      status.textContent = "Thinking (charts + optional news)…";
+      status.textContent = "Working (charts / news / web learn)…";
       const res = await fetch(`/specialists/${BOT}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -282,15 +333,18 @@
       }
       addMsg("assistant", data.response || "");
       if (data.requires_permission) {
-        status.textContent = "Internet permission needed for live company news — click Approve internet.";
+        status.textContent = "Internet permission needed — click Approve internet.";
         pendingPermissionId = data.permission_request_id;
       } else {
         status.textContent = "Done";
       }
+      loadLearnings();
+      loadTradingStatus();
     });
 
     loadProvider();
     loadTradingStatus();
+    loadLearnings();
     loadWebhooks();
   </script>
 </body>
