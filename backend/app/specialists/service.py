@@ -381,48 +381,51 @@ class SpecialistService:
 
             assist_obj = web_assist if isinstance(web_assist, WebAssistResult) else None
             grounded = compose_trading_analysis(user_message, web_assist=assist_obj)
-            # Prefer grounded trading method; optional short polish with tech model.
-            provider = build_provider(settings)
-            memory_context = self._memory.recent_context(db=db)
-            stored = self._local_learnings.recall_context(db, slug, limit=10)
-            if stored:
-                memory_context = (
-                    f"{memory_context}\n\n--- STORED LOCAL LEARNINGS ---\n{stored}"
-                    if memory_context
-                    else f"--- STORED LOCAL LEARNINGS ---\n{stored}"
+            # Echo provider has no real model — return grounded draft (news + TA KB already included).
+            if settings.provider != "ollama":
+                assistant_text = grounded
+            else:
+                provider = build_provider(settings)
+                memory_context = self._memory.recent_context(db=db)
+                stored = self._local_learnings.recall_context(db, slug, limit=10)
+                if stored:
+                    memory_context = (
+                        f"{memory_context}\n\n--- STORED LOCAL LEARNINGS ---\n{stored}"
+                        if memory_context
+                        else f"--- STORED LOCAL LEARNINGS ---\n{stored}"
+                    )
+                full_prompt = (
+                    row.system_prompt
+                    + "\n\n"
+                    + trading_system_addon()
+                    + "\n\n"
+                    + build_ta_kb_brief(limit=25)
+                    + "\n\nCRITICAL: Do not invent prices or news. "
+                    "Use the grounded draft facts. No guaranteed profit claims."
                 )
-            full_prompt = (
-                row.system_prompt
-                + "\n\n"
-                + trading_system_addon()
-                + "\n\n"
-                + build_ta_kb_brief(limit=25)
-                + "\n\nCRITICAL: Do not invent prices or news. "
-                "Use the grounded draft facts. No guaranteed profit claims."
-            )
-            user_for_model = (
-                f"User question:\n{user_message}\n\n"
-                f"Grounded trading draft:\n{grounded}\n\n"
-                "Improve clarity of bias/scenarios/invalidations. Keep all facts."
-            )
-            try:
-                polished = await asyncio.wait_for(
-                    provider.generate(
-                        user_for_model,
-                        memory_context=memory_context,
-                        system_prompt=full_prompt,
-                        specialist_slug=slug,
-                    ),
-                    timeout=25.0,
+                user_for_model = (
+                    f"User question:\n{user_message}\n\n"
+                    f"Grounded trading draft:\n{grounded}\n\n"
+                    "Improve clarity of bias/scenarios/invalidations. Keep all facts."
                 )
-            except Exception as exc:  # noqa: BLE001
-                logger.warning("Trading polish failed: %s", exc)
-                polished = ""
-            assistant_text = (
-                polished.strip()
-                if polished and len(polished.strip()) > 80
-                else grounded
-            )
+                try:
+                    polished = await asyncio.wait_for(
+                        provider.generate(
+                            user_for_model,
+                            memory_context=memory_context,
+                            system_prompt=full_prompt,
+                            specialist_slug=slug,
+                        ),
+                        timeout=25.0,
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("Trading polish failed: %s", exc)
+                    polished = ""
+                assistant_text = (
+                    polished.strip()
+                    if polished and len(polished.strip()) > 80 and "ECHO MODE" not in polished
+                    else grounded
+                )
             if assist_obj and assist_obj.context:
                 maybe_record_web_assist(
                     db,

@@ -10,7 +10,7 @@ from app.trading.web_learn import (
     is_trading_web_learn_ask,
     url_worth_capturing,
 )
-from app.web_learning.search import SearchResult
+from app.web_learning.intent import extract_urls, sanitize_url
 from app.web_learning.service import CaptureResult, SearchPersistResult
 
 
@@ -38,6 +38,12 @@ def test_url_worth_capturing_filters_chart_widgets():
     assert url_worth_capturing("https://www.tradingview.com/support/solutions/43000502338/")
     assert url_worth_capturing("https://in.tradingview.com/ideas/tradingviewchart/")
     assert not url_worth_capturing("https://www.tradingview.com/chart/AAPL/")
+
+
+def test_sanitize_url_strips_smart_quotes():
+    dirty = "https://in.tradingview.com/ideas/tradingviewchart/\u201d"
+    assert sanitize_url(dirty) == "https://in.tradingview.com/ideas/tradingviewchart/"
+    assert extract_urls(f'learn from "{dirty}"')[0].endswith("tradingviewchart/")
 
 
 def test_build_learn_queries_tradingview_ideas():

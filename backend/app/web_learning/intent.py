@@ -36,11 +36,24 @@ _FILLER_PATTERN = re.compile(
 )
 
 
+_SMART_QUOTE_CHARS = "\"'""''\u00b4`\u201c\u201d\u2018\u2019"
+
+
+def sanitize_url(url: str) -> str:
+    """Strip smart quotes and trailing punctuation accidentally copied from UI text."""
+    cleaned = (url or "").strip()
+    while cleaned and cleaned[0] in _SMART_QUOTE_CHARS:
+        cleaned = cleaned[1:]
+    while cleaned and cleaned[-1] in _SMART_QUOTE_CHARS + ".,);]":
+        cleaned = cleaned[:-1]
+    return cleaned.strip()
+
+
 def extract_urls(message: str) -> list[str]:
     found: list[str] = []
     for match in _URL_PATTERN.findall(message):
-        url = match.rstrip(".,);]")
-        if url not in found:
+        url = sanitize_url(match)
+        if url and url not in found:
             found.append(url)
     return found
 

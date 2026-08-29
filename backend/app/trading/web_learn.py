@@ -10,7 +10,7 @@ from urllib.parse import urlparse
 from sqlalchemy.orm import Session
 
 from app.learning.local_store import LocalLearningStore
-from app.web_learning.intent import extract_urls
+from app.web_learning.intent import extract_urls, sanitize_url
 from app.web_learning.service import CaptureResult, SearchPersistResult, WebLearningService
 
 logger = logging.getLogger(__name__)
@@ -275,6 +275,31 @@ def format_learn_reply(result: TradingWebLearnResult) -> str:
     return "\n".join(parts)
 
 
+def _skip_search_result_url(url: str) -> bool:
+    """Skip portal/RSS links that are not capturable education pages."""
+    host = (urlparse(url).netloc or "").lower().removeprefix("www.")
+    if host in {"news.google.com", "google.com", "bing.com", "duckduckgo.com"}:
+        return True
+    if "news.google.com" in url or "/rss/articles/" in url:
+        return True
+    return False
+
+
+def _tradingview_url_candidates(user_message: str) -> list[str]:
+    """Known-good TradingView education URLs when user mentions ideas/chart learning."""
+    lower = (user_message or "").lower()
+    candidates: list[str] = []
+    if "tradingviewchart" in lower or "ideas/tradingview" in lower or "/ideas/" in lower:
+        candidates.extend(
+            [
+                "https://www.tradingview.com/ideas/",
+                "https://www.tradingview.com/support/solutions/43000501826-candlestick-patterns/",
+                "https://www.tradingview.com/support/solutions/43000502338-chart-types/",
+            ]
+        )
+    return candidates
+
+
 async def _capture_and_save_imp(
     db: Session,
     web: WebLearningService,
@@ -363,10 +388,14 @@ async def run_trading_web_learn(
     captures_left = max_captures
 
     # Direct URLs pasted by the user (e.g. TradingView Ideas pages).
-    for raw_url in extract_urls(user_message):
+    direct_urls = [sanitize_url(u) for u in extract_urls(user_message)]
+    for fallback in _tradingview_url_candidates(user_message):
+        if fallback not in direct_urls:
+            direct_urls.append(fallback)
+    for raw_url in direct_urls:
         if captures_left <= 0:
             break
-        url = raw_url.strip()
+        url = sanitize_url(raw_url)
         if not url or url in seen_urls:
             continue
         if not url_worth_capturing(url):
@@ -411,8 +440,11 @@ async def run_trading_web_learn(
         for result in ranked:
             if captures_left <= 0:
                 break
-            url = (result.url or "").strip()
+            url = sanitize_url((result.url or "").strip())
             if not url or url in seen_urls:
+                continue
+            if _skip_search_result_url(url):
+                out.skipped.append(f"RSS/portal link skipped: {result.title[:60]}")
                 continue
             if not url_worth_capturing(url):
                 out.skipped.append(f"{result.title[:80]} — {url[:120]}")
