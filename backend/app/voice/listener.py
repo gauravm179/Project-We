@@ -38,13 +38,41 @@ class VoiceListener:
         self._np = np
 
         try:
+            import openwakeword  # type: ignore
             from openwakeword.model import Model  # type: ignore
+            from openwakeword.utils import download_models  # type: ignore
 
             # Prefer ONNX on macOS (tflite-runtime often missing on Apple Silicon).
+            target = self.config.wake_word.lower().replace(" ", "_").replace("-", "_")
+            model_paths = [
+                path
+                for path in openwakeword.get_pretrained_model_paths("onnx")
+                if target in path.lower().replace("-", "_")
+            ]
+            if not model_paths:
+                download_models()
+                model_paths = [
+                    path
+                    for path in openwakeword.get_pretrained_model_paths("onnx")
+                    if target in path.lower().replace("-", "_")
+                ]
             try:
-                self._oww_model = Model(inference_framework="onnx")
+                self._oww_model = Model(
+                    wakeword_models=model_paths or [],
+                    inference_framework="onnx",
+                )
             except Exception:
-                self._oww_model = Model()
+                # First install often lacks ONNX files under resources/models.
+                download_models()
+                model_paths = [
+                    path
+                    for path in openwakeword.get_pretrained_model_paths("onnx")
+                    if target in path.lower().replace("-", "_")
+                ]
+                self._oww_model = Model(
+                    wakeword_models=model_paths or [],
+                    inference_framework="onnx",
+                )
         except Exception:
             self._oww_model = None
 

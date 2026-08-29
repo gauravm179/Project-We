@@ -21,6 +21,7 @@ def test_route_web_search_intent():
 def test_route_explicit_voice_phrases():
     assert route_message("ask coding bot to explain recursion").target == "coding-bot"
     assert route_message("tell the web learner to capture this page").target == "web-learner-bot"
+    assert route_message("ask the trading bot about AAPL").target == "trading-bot"
     assert route_message("ask the master bot what time it is").target == "master"
 
 

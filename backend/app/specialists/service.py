@@ -22,7 +22,18 @@ from app.web_learning.intent import (
     is_chart_curriculum_ask,
     is_chart_learn_ask,
     is_learn_intent,
+    is_news_ask,
     message_needs_web_assist,
+)
+from app.trading.intent import company_news_query, wants_company_news
+from app.trading.service import compose_trading_analysis, trading_system_addon
+from app.trading.ta_kb import format_full_ta_reply, install_full_ta_kb, is_ta_kb_install_ask
+from app.trading.ta_curriculum import build_ta_kb_brief
+from app.trading.web_learn import (
+    TradingWebLearnResult,
+    format_learn_reply,
+    is_trading_web_learn_ask,
+    run_trading_web_learn,
 )
 from app.web_learning.service import WebAssistResult, WebLearningService
 from app.memory.service import MemoryService
@@ -161,6 +172,276 @@ class SpecialistService:
         internet_approved = self._policy.has_approved_capability(db, "internet")
         skip_web_assist_early = slug == "coding-bot" and (needs_guidelines or wants_live_docs)
 
+        # Trading-bot: chart knowledge + optional company news via web-learner.
+        if slug == "trading-bot":
+            from app.progress import progress
+
+            # Full TA KB: all chart types, patterns, indicators, scenarios (local + optional web).
+            if is_ta_kb_install_ask(user_message):
+                progress.step("ta-kb", "Installing full technical analysis knowledge base")
+                local, web_result = await install_full_ta_kb(
+                    db,
+                    self._web_learning,
+                    user_message=user_message,
+                    fetch_web=internet_approved,
+                )
+                if web_result and web_result.requires_permission:
+                    blocked = self._web_learning._permission_block(  # noqa: SLF001
+                        db,
+                        "trading-bot needs internet to fetch TradingView/Zerodha TA pages",
+                    )
+                    assistant_text = format_full_ta_reply(
+                        local, web_result, internet_approved=False
+                    )
+                    db.add(
+                        SpecialistMessage(
+                            specialist_id=row.id, role="assistant", content=assistant_text
+                        )
+                    )
+                    db.commit()
+                    return SpecialistChatReply(
+                        specialist_slug=row.slug,
+                        specialist_name=row.name,
+                        response=assistant_text,
+                        requires_permission=True,
+                        required_capability="internet",
+                        permission_request_id=int(blocked["permission_request_id"]),  # type: ignore[arg-type]
+                    )
+                assistant_text = format_full_ta_reply(
+                    local, web_result, internet_approved=internet_approved
+                )
+                db.add(
+                    SpecialistMessage(
+                        specialist_id=row.id, role="assistant", content=assistant_text
+                    )
+                )
+                db.commit()
+                progress.step("ta-kb-done", f"topics={local.get('topic_count')}")
+                return SpecialistChatReply(
+                    specialist_slug=row.slug,
+                    specialist_name=row.name,
+                    response=assistant_text,
+                )
+
+            # Explicit web-learn: Google Zerodha/TradingView/etc → save IMP notes.
+            if is_trading_web_learn_ask(user_message):
+                progress.step("trading-web-learn", "Google trusted trading sites + save IMP")
+                if not internet_approved:
+                    blocked = self._web_learning._permission_block(  # noqa: SLF001
+                        db,
+                        "trading-bot needs internet to learn from Zerodha/TradingView/Google",
+                    )
+                    perm = TradingWebLearnResult(
+                        requires_permission=True,
+                        permission_request_id=int(blocked["permission_request_id"]),  # type: ignore[arg-type]
+                        message=str(
+                            blocked.get("message")
+                            or "Approve internet so trading-bot can Google and save IMP notes."
+                        ),
+                    )
+                    assistant_text = format_learn_reply(perm)
+                    db.add(
+                        SpecialistMessage(
+                            specialist_id=row.id, role="assistant", content=assistant_text
+                        )
+                    )
+                    db.commit()
+                    return SpecialistChatReply(
+                        specialist_slug=row.slug,
+                        specialist_name=row.name,
+                        response=assistant_text,
+                        requires_permission=True,
+                        required_capability="internet",
+                        permission_request_id=perm.permission_request_id,
+                    )
+                try:
+                    learn_result = await asyncio.wait_for(
+                        run_trading_web_learn(
+                            db,
+                            self._web_learning,
+                            user_message=user_message,
+                            max_queries=3,
+                            max_captures=3,
+                        ),
+                        timeout=75.0,
+                    )
+                except asyncio.TimeoutError:
+                    learn_result = TradingWebLearnResult(
+                        errors=["Web learn timed out — try again with a narrower topic."]
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    logger.exception("Trading web learn failed")
+                    learn_result = TradingWebLearnResult(errors=[str(exc)])
+
+                if learn_result.requires_permission:
+                    assistant_text = format_learn_reply(learn_result)
+                    db.add(
+                        SpecialistMessage(
+                            specialist_id=row.id, role="assistant", content=assistant_text
+                        )
+                    )
+                    db.commit()
+                    return SpecialistChatReply(
+                        specialist_slug=row.slug,
+                        specialist_name=row.name,
+                        response=assistant_text,
+                        requires_permission=True,
+                        required_capability="internet",
+                        permission_request_id=learn_result.permission_request_id,
+                    )
+
+                assistant_text = format_learn_reply(learn_result)
+                db.add(
+                    SpecialistMessage(
+                        specialist_id=row.id, role="assistant", content=assistant_text
+                    )
+                )
+                db.commit()
+                progress.step(
+                    "trading-web-learn-done",
+                    f"saved={len(learn_result.saved)} captured={learn_result.captured}",
+                )
+                return SpecialistChatReply(
+                    specialist_slug=row.slug,
+                    specialist_name=row.name,
+                    response=assistant_text,
+                )
+
+            progress.step("trading", "Chart skills + optional company news")
+            web_assist: WebAssistResult | dict[str, object] | None = None
+            news_q = company_news_query(user_message) if wants_company_news(user_message) else None
+            # Also pull saved IMP notes into analysis memory (already via recall below).
+            if news_q and internet_approved:
+                progress.step("trading-news", f"Fetching news: {news_q[:100]}")
+                try:
+                    web_assist = await asyncio.wait_for(
+                        self._web_learning.assist_for_message(
+                            db,
+                            f"search for {news_q}",
+                            requesting_bot=slug,
+                            auto_capture_urls=False,
+                        ),
+                        timeout=20.0,
+                    )
+                except asyncio.TimeoutError:
+                    progress.step("trading-news-timeout", "News fetch timed out")
+                    web_assist = WebAssistResult(
+                        context="WEB LEARNER ASSIST:\nCompany news search timed out"
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    logger.exception("Trading news assist failed")
+                    web_assist = WebAssistResult(
+                        context=f"WEB LEARNER ASSIST:\nNews fetch failed: {exc}"
+                    )
+            elif news_q and not internet_approved:
+                blocked = self._web_learning._permission_block(  # noqa: SLF001
+                    db,
+                    f"trading-bot needs web-learner news for: {news_q[:160]}",
+                )
+                assistant_text = (
+                    compose_trading_analysis(user_message, web_assist=None)
+                    + "\n\n"
+                    + str(blocked.get("message") or "Approve internet to pull company news.")
+                )
+                db.add(
+                    SpecialistMessage(
+                        specialist_id=row.id, role="assistant", content=assistant_text
+                    )
+                )
+                db.commit()
+                return SpecialistChatReply(
+                    specialist_slug=row.slug,
+                    specialist_name=row.name,
+                    response=assistant_text,
+                    requires_permission=True,
+                    required_capability="internet",
+                    permission_request_id=int(blocked["permission_request_id"]),  # type: ignore[arg-type]
+                )
+
+            if isinstance(web_assist, dict) and web_assist.get("requires_permission"):
+                assistant_text = (
+                    compose_trading_analysis(user_message)
+                    + "\n\n"
+                    + str(web_assist.get("message") or "Internet approval required for news.")
+                )
+                db.add(
+                    SpecialistMessage(
+                        specialist_id=row.id, role="assistant", content=assistant_text
+                    )
+                )
+                db.commit()
+                return SpecialistChatReply(
+                    specialist_slug=row.slug,
+                    specialist_name=row.name,
+                    response=assistant_text,
+                    requires_permission=True,
+                    required_capability="internet",
+                    permission_request_id=web_assist.get("permission_request_id"),  # type: ignore[arg-type]
+                )
+
+            assist_obj = web_assist if isinstance(web_assist, WebAssistResult) else None
+            grounded = compose_trading_analysis(user_message, web_assist=assist_obj)
+            # Prefer grounded trading method; optional short polish with tech model.
+            provider = build_provider(settings)
+            memory_context = self._memory.recent_context(db=db)
+            stored = self._local_learnings.recall_context(db, slug, limit=10)
+            if stored:
+                memory_context = (
+                    f"{memory_context}\n\n--- STORED LOCAL LEARNINGS ---\n{stored}"
+                    if memory_context
+                    else f"--- STORED LOCAL LEARNINGS ---\n{stored}"
+                )
+            full_prompt = (
+                row.system_prompt
+                + "\n\n"
+                + trading_system_addon()
+                + "\n\n"
+                + build_ta_kb_brief(limit=25)
+                + "\n\nCRITICAL: Do not invent prices or news. "
+                "Use the grounded draft facts. No guaranteed profit claims."
+            )
+            user_for_model = (
+                f"User question:\n{user_message}\n\n"
+                f"Grounded trading draft:\n{grounded}\n\n"
+                "Improve clarity of bias/scenarios/invalidations. Keep all facts."
+            )
+            try:
+                polished = await asyncio.wait_for(
+                    provider.generate(
+                        user_for_model,
+                        memory_context=memory_context,
+                        system_prompt=full_prompt,
+                        specialist_slug=slug,
+                    ),
+                    timeout=25.0,
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Trading polish failed: %s", exc)
+                polished = ""
+            assistant_text = (
+                polished.strip()
+                if polished and len(polished.strip()) > 80
+                else grounded
+            )
+            if assist_obj and assist_obj.context:
+                maybe_record_web_assist(
+                    db,
+                    bot_slug=slug,
+                    user_message=user_message,
+                    context=assist_obj.context,
+                    capture_ids=list(assist_obj.capture_ids) if assist_obj.capture_ids else None,
+                )
+            db.add(
+                SpecialistMessage(specialist_id=row.id, role="assistant", content=assistant_text)
+            )
+            db.commit()
+            progress.step("trading-done", f"chars={len(assistant_text)}")
+            return SpecialistChatReply(
+                specialist_slug=row.slug,
+                specialist_name=row.name,
+                response=assistant_text,
+            )
+
         # Chart curriculum install: multi-type skills on disk + SQLite (no web).
         if slug == "web-learner-bot" and is_chart_curriculum_ask(user_message):
             from app.progress import progress
@@ -270,6 +551,8 @@ class SpecialistService:
             from app.progress import progress
 
             progress.step("web-assist", f"{slug} fetching search/pages")
+            # News/learn may capture pages; give them more than a quick search.
+            web_timeout = 45.0 if (is_news_ask(user_message) or is_learn_intent(user_message)) else 20.0
             try:
                 web_assist = await asyncio.wait_for(
                     self._web_learning.assist_for_message(
@@ -277,14 +560,18 @@ class SpecialistService:
                         user_message,
                         requesting_bot=slug,
                     ),
-                    timeout=20.0,
+                    timeout=web_timeout,
                 )
             except asyncio.TimeoutError:
-                progress.step("web-timeout", "Web assist timed out after 20s")
-                if slug == "web-learner-bot" and is_learn_intent(user_message):
+                progress.step("web-timeout", f"Web assist timed out after {web_timeout:.0f}s")
+                if slug == "web-learner-bot" and (
+                    is_learn_intent(user_message) or is_news_ask(user_message)
+                ):
                     fallback = self._web_learning.compose_grounded_skill_reply(
                         user_message,
-                        WebAssistResult(context="WEB LEARNER ASSIST:\nSearch timed out after 20s"),
+                        WebAssistResult(
+                            context=f"WEB LEARNER ASSIST:\nSearch timed out after {web_timeout:.0f}s"
+                        ),
                     )
                     db.add(
                         SpecialistMessage(
@@ -301,7 +588,9 @@ class SpecialistService:
             except Exception as exc:  # noqa: BLE001
                 logger.exception("Web assist failed for %s", slug)
                 progress.step("web-assist-error", f"{type(exc).__name__}: {exc}")
-                if slug == "web-learner-bot" and is_learn_intent(user_message):
+                if slug == "web-learner-bot" and (
+                    is_learn_intent(user_message) or is_news_ask(user_message)
+                ):
                     fallback = self._web_learning.compose_grounded_skill_reply(
                         user_message,
                         WebAssistResult(
@@ -471,14 +760,19 @@ class SpecialistService:
             and isinstance(web_assist, WebAssistResult)
             and web_assist.context
         ):
-            from app.web_learning.intent import is_learn_intent, is_news_ask
-
             grounded = self._web_learning.compose_grounded_skill_reply(user_message, web_assist)
-            if is_learn_intent(user_message) or is_news_ask(user_message):
-                # News/learn asks stay evidence-based; skip Ollama so offline models don't block.
+            if is_learn_intent(user_message):
+                # Learn asks stay evidence-based; skip Ollama so offline models don't block.
                 from app.progress import progress
 
                 progress.step("teach-from-web", "Building grounded skill reply (no Ollama)")
+                assistant_text = grounded
+            elif is_news_ask(user_message):
+                # News: use trained grounded thinking briefing (fast).
+                # DeepSeek polish is optional and often exceeds the Voice UI timeout.
+                from app.progress import progress
+
+                progress.step("teach-from-web", "News briefing with thinking method")
                 assistant_text = grounded
             else:
                 polish_prompt = (

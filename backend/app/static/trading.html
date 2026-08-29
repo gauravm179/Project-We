@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Project We — Trading Bot</title>
+  <style>
+    :root {
+      --bg: #0e1410;
+      --panel: #152019;
+      --border: #2a3a30;
+      --text: #e7f0ea;
+      --muted: #8fa597;
+      --accent: #2f9e6b;
+      --warn: #c9a227;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "IBM Plex Sans", "Segoe UI", ui-sans-serif, system-ui, sans-serif;
+      background:
+        radial-gradient(circle at 12% 0%, #1a3326 0%, transparent 40%),
+        radial-gradient(circle at 90% 20%, #1c2a22 0%, transparent 35%),
+        var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+    .wrap {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 24px;
+      display: grid;
+      gap: 20px;
+      grid-template-columns: 340px 1fr;
+    }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 18px;
+    }
+    h1 { margin: 0 0 8px; font-size: 1.35rem; letter-spacing: -0.02em; }
+    .muted { color: var(--muted); font-size: 0.9rem; line-height: 1.45; }
+    .section {
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      color: var(--muted);
+      margin: 16px 0 8px;
+    }
+    input, textarea, button { font: inherit; }
+    input, textarea {
+      width: 100%;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: #101812;
+      color: var(--text);
+      padding: 10px 12px;
+    }
+    button {
+      border: none;
+      border-radius: 10px;
+      padding: 10px 14px;
+      background: linear-gradient(135deg, var(--accent), #3cbc7e);
+      color: #062014;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    button.secondary {
+      background: #101812;
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-weight: 600;
+    }
+    code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 0.82em;
+      color: #b8e0c8;
+    }
+    .list { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
+    .item {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px;
+      font-size: 0.88rem;
+    }
+    .messages {
+      min-height: 48vh;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+    .msg {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 10px 12px;
+      white-space: pre-wrap;
+    }
+    .user { background: #1b3228; align-self: flex-end; max-width: 85%; }
+    .assistant { background: #122018; align-self: flex-start; max-width: 92%; }
+    .status { color: var(--muted); font-size: 0.85rem; margin-top: 8px; }
+    .links a { color: #7dcea0; text-decoration: none; }
+    .note {
+      margin-top: 10px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid #4a3f1a;
+      background: #1c1a10;
+      color: #e6d79a;
+      font-size: 0.85rem;
+    }
+    @media (max-width: 900px) { .wrap { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <aside class="panel">
+      <h1>Trading Bot</h1>
+      <p class="muted">
+        Chart reading + company news + Google learning from Zerodha Varsity, TradingView education, Investopedia — IMP notes saved for later.
+      </p>
+      <p id="provider-status" class="muted">AI provider: loading…</p>
+      <p id="trading-status" class="muted">Webhook status: loading…</p>
+      <div class="links muted">
+        <a href="/ui/home.html">Home</a> ·
+        <a href="/ui/voice.html">Voice</a> ·
+        <a href="/ui/web-learner.html">Web</a>
+      </div>
+
+      <div class="section">Learn from internet</div>
+      <p class="muted">Google trusted sites, pick useful pages, save IMP notes locally.</p>
+      <button type="button" id="learn-btn">Learn from Zerodha + TradingView</button>
+      <button type="button" class="secondary" id="ta-kb-btn" style="margin-top:8px">Install full TA KB (all charts)</button>
+      <button type="button" class="secondary" id="approve-btn" style="margin-top:8px">Approve internet</button>
+      <div class="section">Saved IMP notes</div>
+      <ul id="learnings" class="list"></ul>
+
+      <div class="section">TradingView webhook</div>
+      <p class="muted">Point alerts to:</p>
+      <p><code id="webhook-url">POST /trading/webhooks/tradingview</code></p>
+      <p class="muted" style="margin-top:8px">Example JSON body:</p>
+      <pre class="item muted" style="overflow:auto">{
+  "ticker": "AAPL",
+  "action": "buy",
+  "price": 190.5,
+  "interval": "1h",
+  "message": "breakout above resistance"
+}</pre>
+      <button type="button" class="secondary" id="sim-webhook-btn">Simulate sample alert</button>
+
+      <div class="section">Recent webhooks</div>
+      <ul id="webhooks" class="list"></ul>
+      <div class="note">Not financial advice. Bias + scenarios + invalidation only — no guaranteed profits.</div>
+    </aside>
+
+    <main class="panel">
+      <div id="messages" class="messages">
+        <div class="muted">Try: “learn from https://in.tradingview.com/ideas/tradingviewchart/” or “Analyze AAPL with news”</div>
+      </div>
+      <form id="chat-form">
+        <textarea id="message-input" rows="4" placeholder="Learn from TradingView support resistance… or analyze a ticker" required></textarea>
+        <div style="height:8px"></div>
+        <button type="submit">Ask trading-bot</button>
+      </form>
+      <div id="status" class="status"></div>
+    </main>
+  </div>
+
+  <script>
+    const BOT = "trading-bot";
+    let pendingPermissionId = null;
+
+    function addMsg(role, text) {
+      const box = document.getElementById("messages");
+      const el = document.createElement("div");
+      el.className = "msg " + (role === "user" ? "user" : "assistant");
+      el.textContent = text;
+      box.appendChild(el);
+      box.scrollTop = box.scrollHeight;
+    }
+
+    async function loadProvider() {
+      const res = await fetch("/health");
+      if (!res.ok) return;
+      const info = await res.json();
+      const ai = info.ai || {};
+      const el = document.getElementById("provider-status");
+      el.textContent = ai.provider === "ollama"
+        ? `AI: Ollama / ${ai.model_configured || ai.model}`
+        : "AI: echo stub (set PROJECT_WE_PROVIDER=ollama for real polish)";
+    }
+
+    async function loadTradingStatus() {
+      const res = await fetch("/trading/status");
+      const el = document.getElementById("trading-status");
+      const urlEl = document.getElementById("webhook-url");
+      if (!res.ok) {
+        el.textContent = "Status: unavailable";
+        return;
+      }
+      const data = await res.json();
+      el.textContent =
+        `Bot ${data.enabled ? "enabled" : "disabled"} · internet ${data.internet_approved ? "on" : "off"} · ` +
+        `TA topics: ${data.ta_kb_topics || "?"} · IMP notes: ${data.imp_notes} · alerts: ${data.recent_count}`;
+      urlEl.textContent = `POST ${location.origin}${data.webhook_url}`;
+    }
+
+    async function loadLearnings() {
+      const res = await fetch("/trading/learnings?limit=10");
+      const list = document.getElementById("learnings");
+      if (!res.ok) {
+        list.innerHTML = "<li class='item'>None yet</li>";
+        return;
+      }
+      const items = await res.json();
+      if (!items.length) {
+        list.innerHTML = "<li class='item'>None yet — click Learn from Zerodha + TradingView</li>";
+        return;
+      }
+      list.innerHTML = items.map(n => `
+        <li class="item">
+          <strong>#${n.id}</strong> [${n.kind}] ${n.title}<br>
+          <span class="muted">${n.preview}</span>
+        </li>`).join("");
+    }
+
+    async function loadWebhooks() {
+      const res = await fetch("/trading/webhooks/recent?limit=8");
+      const list = document.getElementById("webhooks");
+      if (!res.ok) {
+        list.innerHTML = "<li class='item'>None yet</li>";
+        return;
+      }
+      const items = await res.json();
+      if (!items.length) {
+        list.innerHTML = "<li class='item'>None yet</li>";
+        return;
+      }
+      list.innerHTML = items.map(w => `
+        <li class="item">
+          <strong>#${w.id}</strong> ${w.ticker || "?"} · ${w.action || "alert"}<br>
+          <span class="muted">${w.source} · ${w.created_at}</span>
+        </li>`).join("");
+    }
+
+    async function approveInternet() {
+      const status = document.getElementById("status");
+      status.textContent = "Requesting internet permission…";
+      const created = await fetch("/permissions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ capability: "internet", reason: "trading-bot web learn + news" }),
+      }).then(r => r.json());
+      pendingPermissionId = created.id;
+      const decided = await fetch(`/permissions/${created.id}/decision`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ approve: true }),
+      });
+      status.textContent = decided.ok ? "Internet approved." : "Could not approve internet.";
+      loadTradingStatus();
+    }
+
+    document.getElementById("approve-btn").addEventListener("click", approveInternet);
+
+    document.getElementById("ta-kb-btn").addEventListener("click", async () => {
+      const status = document.getElementById("status");
+      status.textContent = "Installing full TA KB (all chart types + technicals)…";
+      addMsg("user", "Install all chart types and technical analysis locally");
+      const res = await fetch("/trading/install-ta-kb?fetch_web=true", { method: "POST" });
+      const data = await res.json();
+      addMsg("assistant", data.reply || "TA KB installed");
+      status.textContent = `TA KB: ${data.topic_count} topics, web saved: ${data.web_saved || 0}`;
+      loadLearnings();
+      loadTradingStatus();
+    });
+
+    document.getElementById("learn-btn").addEventListener("click", async () => {
+      const status = document.getElementById("status");
+      status.textContent = "Googling Zerodha / TradingView education pages…";
+      addMsg("user", "Learn from Zerodha Varsity and TradingView candlestick charts");
+      const res = await fetch("/trading/learn", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: "learn from Zerodha Varsity and TradingView candlestick charts",
+        }),
+      });
+      const data = await res.json();
+      if (data.requires_permission) {
+        addMsg("assistant", data.reply || "Approve internet first.");
+        status.textContent = "Internet permission needed — click Approve internet.";
+        return;
+      }
+      addMsg("assistant", data.reply || "Done");
+      status.textContent = `Saved ${data.saved_count || 0} IMP notes`;
+      loadLearnings();
+      loadTradingStatus();
+    });
+
+    document.getElementById("sim-webhook-btn").addEventListener("click", async () => {
+      const status = document.getElementById("status");
+      status.textContent = "Sending sample TradingView webhook…";
+      const res = await fetch("/trading/webhooks/tradingview?analyze=true", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ticker: "AAPL",
+          action: "buy",
+          price: 190.5,
+          interval: "1h",
+          message: "breakout above resistance",
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        status.textContent = "Webhook failed";
+        return;
+      }
+      addMsg("assistant", data.analysis || data.message || "Webhook stored");
+      status.textContent = data.message || "ok";
+      loadWebhooks();
+      loadTradingStatus();
+    });
+
+    document.getElementById("chat-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const input = document.getElementById("message-input");
+      const status = document.getElementById("status");
+      const message = input.value.trim();
+      if (!message) return;
+      addMsg("user", message);
+      input.value = "";
+      status.textContent = "Working (charts / news / web learn)…";
+      const res = await fetch(`/specialists/${BOT}/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        addMsg("assistant", data.detail || "Error");
+        status.textContent = "Failed";
+        return;
+      }
+      addMsg("assistant", data.response || "");
+      if (data.requires_permission) {
+        status.textContent = "Internet permission needed — click Approve internet.";
+        pendingPermissionId = data.permission_request_id;
+      } else {
+        status.textContent = "Done";
+      }
+      loadLearnings();
+      loadTradingStatus();
+    });
+
+    loadProvider();
+    loadTradingStatus();
+    loadLearnings();
+    loadWebhooks();
+  </script>
+</body>
+</html>

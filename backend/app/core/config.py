@@ -14,7 +14,7 @@ DEFAULT_DB_PATH = DATA_DIR / "project_we.db"
 @dataclass(frozen=True)
 class Settings:
     app_name: str = "Project We"
-    app_version: str = "0.3.6"
+    app_version: str = "0.4.1"
     provider: str = "echo"
     database_url: str = f"sqlite:///{DEFAULT_DB_PATH}"
     ollama_base_url: str = "http://127.0.0.1:11434"
@@ -29,7 +29,7 @@ class Settings:
     ollama_auto_route_models: bool = True
     strict_local_mode: bool = True
     internet_mode: str = "ask"
-    web_search_engine: str = "duckduckgo"
+    web_search_engine: str = "google"
     voice_enabled: bool = False
     voice_wake_word: str = "hey jarvis"
     voice_wake_sensitivity: float = 0.5
@@ -65,7 +65,7 @@ def get_settings() -> Settings:
         == "true",
         strict_local_mode=os.getenv("PROJECT_WE_STRICT_LOCAL_MODE", "true").lower() == "true",
         internet_mode=os.getenv("PROJECT_WE_INTERNET_MODE", "ask").lower(),
-        web_search_engine=os.getenv("PROJECT_WE_WEB_SEARCH_ENGINE", "duckduckgo").lower(),
+        web_search_engine=os.getenv("PROJECT_WE_WEB_SEARCH_ENGINE", "google").lower(),
         voice_enabled=os.getenv("PROJECT_WE_VOICE_ENABLED", "false").lower() == "true",
         voice_wake_word=os.getenv("PROJECT_WE_VOICE_WAKE_WORD", "hey jarvis"),
         voice_wake_sensitivity=float(os.getenv("PROJECT_WE_VOICE_WAKE_SENSITIVITY", "0.5")),

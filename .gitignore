@@ -22,3 +22,12 @@ data/bot_learnings/
 *.db
 *.db-shm
 *.db-wal
+
+# Local Python 3.12 venv + runtime artifacts
+backend/.venv312/
+logs/
+data/trading/
+data/trading_curriculum/
+data/news_curriculum/
+data/trading_ta_kb/
+backend/package-lock.json

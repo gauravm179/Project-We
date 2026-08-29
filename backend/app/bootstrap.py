@@ -26,19 +26,25 @@ WEB_LEARNER_BOT = SpecialistCreate(
     description=(
         "Specialist sub-bot that reads HTML web pages, extracts images, "
         "stores compressed learning on the laptop, recalls it later, "
-        "and teaches chart reading from a local multi-type curriculum."
+        "teaches chart reading, and analyzes current affairs with a fetch→think→question method."
     ),
     system_prompt=(
         "You are web-learner-bot under Project We. "
         "You use tools/skills: web-search, read-web-page, extract-page-images, "
         "compress-store-learning, recall-stored-pages, teach-from-web, "
-        "and local chart-reading curriculum skills (line, bar, candle, Heikin-Ashi, volume, trend, S/R). "
+        "fetch-current-affairs, analyze-current-affairs, ask-news-questions, "
+        "and local chart-reading curriculum skills. "
+        "For news/current affairs: FETCH live evidence first, then THINK "
+        "(facts vs interpretation), CLUSTER into themes, ANALYZE why it matters, "
+        "and ASK sharp follow-up questions. Never invent events. "
         "When WEB LEARNER ASSIST or STORED WEB LEARNING evidence is present, "
-        "answer ONLY from that evidence and cite search/capture IDs. "
+        "answer ONLY from that evidence and cite sources. "
         "Never invent a browser walkthrough (do not say open your browser, click, zoom, or navigate). "
         "If a live chart page is JavaScript-only (e.g. TradingView chart), say so and teach from "
         "local chart skills and/or fetched tutorial search/capture text instead. "
-        "Stay local-first and respect internet permission."
+        "Stay local-first and respect internet permission. "
+        "Use the fast local chat model for simple talk; use the deeper reasoning model "
+        "to analyze news evidence and design follow-up questions."
     ),
 )
 
@@ -98,7 +104,7 @@ WEB_LEARNER_SKILLS: tuple[SkillCreate, ...] = (
             "Optionally capture the best result page for deeper reading."
         ),
         parameters_schema={
-            "engine": {"type": "string", "default": "duckduckgo"},
+            "engine": {"type": "string", "default": "google"},
             "limit": {"type": "integer", "default": 5},
         },
     ),
@@ -116,12 +122,15 @@ WEB_LEARNER_SKILLS: tuple[SkillCreate, ...] = (
     ),
 )
 
+# News-thinking skills are installed via news_curriculum (kept out of this static tuple
+# so bootstrap can refresh instructions from NEWS_THINKING_METHOD in one place).
+
 WEB_LEARNER_SKILL_PARAMETERS: dict[str, dict] = {
     "read-web-page": {"max_chars": 20000},
     "extract-page-images": {"max_images": 8},
     "compress-store-learning": {"compression": "gzip+jpeg"},
     "recall-stored-pages": {"lookback": 5},
-    "web-search": {"engine": "duckduckgo", "limit": 5},
+    "web-search": {"engine": "google", "limit": 5},
     "teach-from-web": {"max_sources": 5},
 }
 
@@ -132,11 +141,18 @@ def bootstrap_web_learner_bot(db: Session) -> None:
     from app.web_learning.chart_curriculum import install_chart_curriculum
 
     install_chart_curriculum(db)
+    # Current-affairs thinking: fetch → analyze → ask questions.
+    from app.web_learning.news_curriculum import install_news_curriculum
+
+    install_news_curriculum(db)
 
 
 def bootstrap_all_bots(db: Session) -> None:
     _bootstrap_coding_only(db)
     bootstrap_web_learner_bot(db)
+    from app.bootstrap_trading import bootstrap_trading_bot
+
+    bootstrap_trading_bot(db)
     # Shared local learning skills + policy note for master and every specialist.
     from app.learning.local_store import LocalLearningStore
 
