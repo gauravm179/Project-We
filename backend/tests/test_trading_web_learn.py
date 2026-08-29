@@ -36,7 +36,66 @@ def test_build_learn_queries_prefers_sites():
 def test_url_worth_capturing_filters_chart_widgets():
     assert url_worth_capturing("https://zerodha.com/varsity/module/technical-analysis/")
     assert url_worth_capturing("https://www.tradingview.com/support/solutions/43000502338/")
+    assert url_worth_capturing("https://in.tradingview.com/ideas/tradingviewchart/")
     assert not url_worth_capturing("https://www.tradingview.com/chart/AAPL/")
+
+
+def test_build_learn_queries_tradingview_ideas():
+    qs = build_learn_queries(
+        "learn from https://in.tradingview.com/ideas/tradingviewchart/ chart ideas",
+        limit=5,
+    )
+    assert any("ideas" in q.lower() for q in qs)
+
+
+def test_direct_url_tradingview_ideas_learn(monkeypatch):
+    import asyncio
+
+    from app.trading import web_learn as wl
+
+    ideas_url = "https://in.tradingview.com/ideas/tradingviewchart/"
+    capture = CaptureResult(
+        capture_id=11,
+        url=ideas_url,
+        title="TradingView chart ideas",
+        summary=(
+            "Chart ideas explain setups with annotated charts. Look for trend structure, "
+            "support resistance, and risk reward on each idea before copying a trade."
+        ),
+        text_chars=300,
+        image_count=0,
+        compressed_bytes=50,
+    )
+
+    web = MagicMock()
+    web.internet_allowed.return_value = True
+    web.search_web = AsyncMock()
+    web.capture_url = AsyncMock(return_value=capture)
+
+    saved = []
+
+    class FakeStore:
+        def record(self, db, **kwargs):
+            rec = MagicMock()
+            rec.id = len(saved) + 1
+            rec.title = kwargs["title"]
+            saved.append(kwargs)
+            return rec
+
+    monkeypatch.setattr(wl, "LocalLearningStore", FakeStore)
+    result = asyncio.run(
+        wl.run_trading_web_learn(
+            MagicMock(),
+            web,
+            user_message=f"learn from {ideas_url} and save important notes",
+            max_queries=0,
+            max_captures=2,
+        )
+    )
+    assert result.captured >= 1
+    assert len(result.saved) >= 1
+    web.capture_url.assert_called()
+    assert ideas_url in str(web.capture_url.call_args)
 
 
 def test_run_trading_web_learn_saves_imp(monkeypatch):
@@ -69,7 +128,6 @@ def test_run_trading_web_learn_saves_imp(monkeypatch):
         text_chars=200,
         image_count=0,
         compressed_bytes=50,
-        storage_path="x",
     )
 
     web = MagicMock()

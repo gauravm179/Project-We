@@ -10,6 +10,7 @@ from urllib.parse import urlparse
 from sqlalchemy.orm import Session
 
 from app.learning.local_store import LocalLearningStore
+from app.web_learning.intent import extract_urls
 from app.web_learning.service import CaptureResult, SearchPersistResult, WebLearningService
 
 logger = logging.getLogger(__name__)
@@ -36,6 +37,7 @@ _TV_OK_PATH_PREFIXES = (
     "/chart-patterns/",
     "/pine-script-docs/",
     "/blog/",
+    "/ideas/",
     "/ideas/education",
     "/scripts/education",
 )
@@ -44,6 +46,7 @@ _DEFAULT_QUERIES: tuple[str, ...] = (
     "site:zerodha.com/varsity candlestick charts technical analysis",
     "site:zerodha.com/varsity support resistance trendlines",
     "site:tradingview.com/support how to read candlestick charts",
+    "site:tradingview.com/ideas chart analysis technical analysis",
     "site:investopedia.com candlestick patterns technical analysis guide",
     "Zerodha Varsity risk management stop loss position sizing",
 )
@@ -133,6 +136,10 @@ def build_learn_queries(user_message: str, *, limit: int = 4) -> list[str]:
             f"site:zerodha.com/varsity {topic or 'technical analysis candlestick'}"
         )
     if "tradingview" in lower or "trading view" in lower:
+        if "ideas" in lower or "tradingviewchart" in lower:
+            queries.append(
+                "site:tradingview.com/ideas chart analysis candlestick support resistance"
+            )
         queries.append(
             f"site:tradingview.com/support {topic or 'candlestick chart types'}"
         )
@@ -170,7 +177,7 @@ def url_worth_capturing(url: str) -> bool:
         # Chart widgets / symbol pages are JS-only.
         if path.startswith("/chart") or "/x/" in path:
             return False
-        return "/support" in path or "education" in path or "candlestick" in path
+        return "/support" in path or "education" in path or "candlestick" in path or "/ideas/" in path
 
     if "zerodha.com" in host:
         # Varsity chapters are the main learning surface.
@@ -198,6 +205,8 @@ def _score_result(url: str, title: str, snippet: str) -> int:
         "tutorial",
         "module",
         "chapter",
+        "ideas",
+        "tradingviewchart",
     ):
         if key in blob:
             score += 2
@@ -266,6 +275,67 @@ def format_learn_reply(result: TradingWebLearnResult) -> str:
     return "\n".join(parts)
 
 
+async def _capture_and_save_imp(
+    db: Session,
+    web: WebLearningService,
+    store: LocalLearningStore,
+    *,
+    url: str,
+    query: str,
+    title_hint: str = "",
+    snippet_hint: str = "",
+    out: TradingWebLearnResult,
+) -> bool:
+    """Capture one education URL and persist an IMP note. Returns True if saved."""
+    try:
+        captured = await web.capture_url(
+            db,
+            "web-learner-bot",
+            url,
+            max_images=1,
+            allow_without_permission=True,
+        )
+    except Exception as exc:  # noqa: BLE001
+        out.errors.append(f"Capture failed {url[:80]}: {exc}")
+        return False
+    if isinstance(captured, dict):
+        out.errors.append(str(captured.get("error") or captured))
+        return False
+    if not isinstance(captured, CaptureResult):
+        return False
+
+    out.captured += 1
+    summary = (captured.summary or snippet_hint or "").strip()
+    if len(summary) < 80 and len(snippet_hint or "") < 40:
+        out.skipped.append(f"too little text: {url[:120]}")
+        return False
+
+    note_body = distill_imp_note(
+        title=captured.title or title_hint or "Trading IMP note",
+        url=captured.url or url,
+        summary=summary,
+        query=query,
+    )
+    learning = store.record(
+        db,
+        bot_slug=TRADING_BOT_SLUG,
+        kind="trading-imp",
+        title=(captured.title or title_hint or "Trading IMP note")[:200],
+        content=note_body,
+        source_ref=f"capture:{captured.capture_id}|{url}"[:250],
+        shared=True,
+    )
+    out.saved.append(
+        SavedImpNote(
+            learning_id=learning.id,
+            title=learning.title,
+            source_url=url,
+            preview=summary[:220],
+        )
+    )
+    return True
+
+
 async def run_trading_web_learn(
     db: Session,
     web: WebLearningService,
@@ -291,6 +361,28 @@ async def run_trading_web_learn(
     out.queries = list(queries)
     seen_urls: set[str] = set()
     captures_left = max_captures
+
+    # Direct URLs pasted by the user (e.g. TradingView Ideas pages).
+    for raw_url in extract_urls(user_message):
+        if captures_left <= 0:
+            break
+        url = raw_url.strip()
+        if not url or url in seen_urls:
+            continue
+        if not url_worth_capturing(url):
+            out.skipped.append(f"not education URL: {url[:120]}")
+            continue
+        seen_urls.add(url)
+        saved = await _capture_and_save_imp(
+            db,
+            web,
+            store,
+            url=url,
+            query=f"direct URL from user: {url[:120]}",
+            out=out,
+        )
+        if saved:
+            captures_left -= 1
 
     for query in queries:
         try:
@@ -329,51 +421,18 @@ async def run_trading_web_learn(
                 out.skipped.append(f"low score: {result.title[:80]}")
                 continue
             seen_urls.add(url)
-            try:
-                captured = await web.capture_url(
-                    db,
-                    "web-learner-bot",
-                    url,
-                    max_images=1,
-                    allow_without_permission=True,
-                )
-            except Exception as exc:  # noqa: BLE001
-                out.errors.append(f"Capture failed {url[:80]}: {exc}")
-                continue
-            if isinstance(captured, dict):
-                out.errors.append(str(captured.get("error") or captured))
-                continue
-            if not isinstance(captured, CaptureResult):
-                continue
-            out.captured += 1
-            captures_left -= 1
-            note_body = distill_imp_note(
-                title=captured.title or result.title,
-                url=captured.url or url,
-                summary=captured.summary or result.snippet,
-                query=query,
-            )
-            # Skip empty shells
-            if len((captured.summary or "").strip()) < 80 and len(result.snippet or "") < 40:
-                out.skipped.append(f"too little text: {url[:120]}")
-                continue
-            learning = store.record(
+            saved = await _capture_and_save_imp(
                 db,
-                bot_slug=TRADING_BOT_SLUG,
-                kind="trading-imp",
-                title=(captured.title or result.title or "Trading IMP note")[:200],
-                content=note_body,
-                source_ref=f"capture:{captured.capture_id}|{url}"[:250],
-                shared=True,
+                web,
+                store,
+                url=url,
+                query=query,
+                title_hint=result.title,
+                snippet_hint=result.snippet,
+                out=out,
             )
-            out.saved.append(
-                SavedImpNote(
-                    learning_id=learning.id,
-                    title=learning.title,
-                    source_url=url,
-                    preview=(captured.summary or result.snippet or "")[:220],
-                )
-            )
+            if saved:
+                captures_left -= 1
 
     # Session index note for quick recall
     if out.saved:
